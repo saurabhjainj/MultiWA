@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- back bubble -->
+    <path android:fillColor="#66FFFFFF"
+        android:pathData="M38,30h20a8,8 0 0 1 8,8v12a8,8 0 0 1 -8,8h-20a8,8 0 0 1 -8,-8v-12a8,8 0 0 1 8,-8z" />
+    <!-- front bubble with tail -->
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M49,44h22a9,9 0 0 1 9,9v12a9,9 0 0 1 -9,9h-18l-9,7v-8a9,9 0 0 1 -4,-7v-13a9,9 0 0 1 9,-9z" />
+    <!-- three coloured dots -->
+    <path android:fillColor="#00A884" android:pathData="M49,59m-3.5,0a3.5,3.5 0 1 0 7,0a3.5,3.5 0 1 0 -7,0" />
+    <path android:fillColor="#7F5AF0" android:pathData="M60,59m-3.5,0a3.5,3.5 0 1 0 7,0a3.5,3.5 0 1 0 -7,0" />
+    <path android:fillColor="#FF6B5B" android:pathData="M71,59m-3.5,0a3.5,3.5 0 1 0 7,0a3.5,3.5 0 1 0 -7,0" />
+</vector>

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <application
+        android:name=".App"
+        android:label="Multi WA"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar"
+        android:hardwareAccelerated="true">
+
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Each account: own process = own WebView data dir = own WhatsApp login.
+             Own taskAffinity = shows as a separate card in Recents for quick switching. -->
+        <activity android:name=".WaActivity$A1" android:label="WhatsApp 1"
+            android:process=":wa1" android:taskAffinity="com.multiwa.wa1"
+            android:launchMode="singleTask" android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode" />
+        <activity android:name=".WaActivity$A2" android:label="WhatsApp 2"
+            android:process=":wa2" android:taskAffinity="com.multiwa.wa2"
+            android:launchMode="singleTask" android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode" />
+        <activity android:name=".WaActivity$A3" android:label="WhatsApp 3"
+            android:process=":wa3" android:taskAffinity="com.multiwa.wa3"
+            android:launchMode="singleTask" android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode" />
+        <activity android:name=".WaActivity$A4" android:label="WhatsApp 4"
+            android:process=":wa4" android:taskAffinity="com.multiwa.wa4"
+            android:launchMode="singleTask" android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode" />
+        <activity android:name=".WaActivity$A5" android:label="WhatsApp 5"
+            android:process=":wa5" android:taskAffinity="com.multiwa.wa5"
+            android:launchMode="singleTask" android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode" />
+    </application>
+</manifest>
