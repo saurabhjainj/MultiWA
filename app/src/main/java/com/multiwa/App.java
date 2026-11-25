@@ -32,7 +32,7 @@ public class App extends Application {
      */
     static void refreshChannels(android.content.Context c) {
         NotificationManager nm = c.getSystemService(NotificationManager.class);
-        for (int s = 0; s < 5; s++) {
+        for (int s = 0; s < MainActivity.MAX; s++) {
             NotificationChannel ch = new NotificationChannel("msg_" + s,
                     WaActivity.slotName(c, s) + " messages", NotificationManager.IMPORTANCE_HIGH);
             ch.enableLights(true);

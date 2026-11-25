@@ -16,8 +16,13 @@ public abstract class KeepAlive extends Service {
     public static class S3 extends KeepAlive {}
     public static class S4 extends KeepAlive {}
     public static class S5 extends KeepAlive {}
+    public static class S6 extends KeepAlive {}
+    public static class S7 extends KeepAlive {}
+    public static class S8 extends KeepAlive {}
+    public static class S9 extends KeepAlive {}
+    public static class S10 extends KeepAlive {}
 
-    static final Class<?>[] SERVICES = { S1.class, S2.class, S3.class, S4.class, S5.class };
+    static final Class<?>[] SERVICES = { S1.class, S2.class, S3.class, S4.class, S5.class, S6.class, S7.class, S8.class, S9.class, S10.class };
 
     private int slot() {
         for (int i = 0; i < SERVICES.length; i++) if (SERVICES[i] == getClass()) return i;

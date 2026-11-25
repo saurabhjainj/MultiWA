@@ -11,6 +11,8 @@
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
 
     <application
         android:name=".App"
@@ -26,29 +28,61 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".ScheduleActivity" android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
 
-        <!-- Each account: own process = own WebView data dir = own WhatsApp login.
-             Own taskAffinity = shows as a separate card in Recents for quick switching. -->
+        <!-- Each account: own process = own WebView data = own WhatsApp login. -->
         <activity android:name=".WaActivity$A1" android:label="WhatsApp 1"
             android:process=":wa1" android:taskAffinity="com.multiwa.wa1"
             android:launchMode="singleTask" android:exported="false"
+            android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode" />
         <activity android:name=".WaActivity$A2" android:label="WhatsApp 2"
             android:process=":wa2" android:taskAffinity="com.multiwa.wa2"
             android:launchMode="singleTask" android:exported="false"
+            android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode" />
         <activity android:name=".WaActivity$A3" android:label="WhatsApp 3"
             android:process=":wa3" android:taskAffinity="com.multiwa.wa3"
             android:launchMode="singleTask" android:exported="false"
+            android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode" />
         <activity android:name=".WaActivity$A4" android:label="WhatsApp 4"
             android:process=":wa4" android:taskAffinity="com.multiwa.wa4"
             android:launchMode="singleTask" android:exported="false"
+            android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode" />
         <activity android:name=".WaActivity$A5" android:label="WhatsApp 5"
             android:process=":wa5" android:taskAffinity="com.multiwa.wa5"
             android:launchMode="singleTask" android:exported="false"
+            android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode" />
+        <activity android:name=".WaActivity$A6" android:label="WhatsApp 6"
+            android:process=":wa6" android:taskAffinity="com.multiwa.wa6"
+            android:launchMode="singleTask" android:exported="false"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode" />
+        <activity android:name=".WaActivity$A7" android:label="WhatsApp 7"
+            android:process=":wa7" android:taskAffinity="com.multiwa.wa7"
+            android:launchMode="singleTask" android:exported="false"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode" />
+        <activity android:name=".WaActivity$A8" android:label="WhatsApp 8"
+            android:process=":wa8" android:taskAffinity="com.multiwa.wa8"
+            android:launchMode="singleTask" android:exported="false"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode" />
+        <activity android:name=".WaActivity$A9" android:label="WhatsApp 9"
+            android:process=":wa9" android:taskAffinity="com.multiwa.wa9"
+            android:launchMode="singleTask" android:exported="false"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode" />
+        <activity android:name=".WaActivity$A10" android:label="WhatsApp 10"
+            android:process=":wa10" android:taskAffinity="com.multiwa.wa10"
+            android:launchMode="singleTask" android:exported="false"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode" />
+
         <!-- Keep-alive service in each account's process -->
         <service android:name=".KeepAlive$S1" android:process=":wa1" android:exported="false"
             android:foregroundServiceType="specialUse">
@@ -70,5 +104,37 @@
             android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Keeps chat session connected for message notifications" />
         </service>
+        <service android:name=".KeepAlive$S6" android:process=":wa6" android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Keeps chat session connected for message notifications" />
+        </service>
+        <service android:name=".KeepAlive$S7" android:process=":wa7" android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Keeps chat session connected for message notifications" />
+        </service>
+        <service android:name=".KeepAlive$S8" android:process=":wa8" android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Keeps chat session connected for message notifications" />
+        </service>
+        <service android:name=".KeepAlive$S9" android:process=":wa9" android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Keeps chat session connected for message notifications" />
+        </service>
+        <service android:name=".KeepAlive$S10" android:process=":wa10" android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Keeps chat session connected for message notifications" />
+        </service>
+
+        <!-- Scheduled-message alarms, delivered into each account's process -->
+        <receiver android:name=".Sched$R1" android:process=":wa1" android:exported="false" />
+        <receiver android:name=".Sched$R2" android:process=":wa2" android:exported="false" />
+        <receiver android:name=".Sched$R3" android:process=":wa3" android:exported="false" />
+        <receiver android:name=".Sched$R4" android:process=":wa4" android:exported="false" />
+        <receiver android:name=".Sched$R5" android:process=":wa5" android:exported="false" />
+        <receiver android:name=".Sched$R6" android:process=":wa6" android:exported="false" />
+        <receiver android:name=".Sched$R7" android:process=":wa7" android:exported="false" />
+        <receiver android:name=".Sched$R8" android:process=":wa8" android:exported="false" />
+        <receiver android:name=".Sched$R9" android:process=":wa9" android:exported="false" />
+        <receiver android:name=".Sched$R10" android:process=":wa10" android:exported="false" />
     </application>
 </manifest>

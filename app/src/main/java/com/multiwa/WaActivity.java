@@ -34,6 +34,11 @@ public abstract class WaActivity extends Activity {
     public static class A3 extends WaActivity {}
     public static class A4 extends WaActivity {}
     public static class A5 extends WaActivity {}
+    public static class A6 extends WaActivity {}
+    public static class A7 extends WaActivity {}
+    public static class A8 extends WaActivity {}
+    public static class A9 extends WaActivity {}
+    public static class A10 extends WaActivity {}
 
     // WhatsApp Web refuses mobile browsers, so present as desktop Chrome.
     private static final String UA =
@@ -48,6 +53,7 @@ public abstract class WaActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        current = this;
         // Pretend the page is always on screen, so Android/Chrome does not slow down
         // WhatsApp Web's timers in background (that slowdown delays notifications).
         web = new WebView(this) {
@@ -62,6 +68,14 @@ public abstract class WaActivity extends Activity {
         frame.addView(web);
         frame.addView(makeSwitchButton());
         setContentView(frame);
+
+        // Keyboard: always let the page take focus when the message box is tapped.
+        web.setFocusable(true);
+        web.setFocusableInTouchMode(true);
+        web.setOnTouchListener((v, e) -> {
+            if (e.getActionMasked() == MotionEvent.ACTION_DOWN && !v.hasFocus()) v.requestFocus();
+            return false; // let WebView handle the tap normally (emoji, buttons, typing)
+        });
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -91,6 +105,10 @@ public abstract class WaActivity extends Activity {
             @Override
             public void onPageFinished(WebView v, String url) {
                 pageLoadedAt = System.currentTimeMillis();
+                if (pendingSendId != -1) {
+                    v.evaluateJavascript(SEND_JS.replace("__ID__", String.valueOf(pendingSendId)), null);
+                    pendingSendId = -1;
+                }
                 v.evaluateJavascript(NOTIFY_JS, null); // fallback if document-start injection unsupported
                 if (!visible) v.evaluateJavascript("window.__mwaSetBg&&__mwaSetBg(true)", null);
             }
@@ -103,6 +121,14 @@ public abstract class WaActivity extends Activity {
                 String all = (title + " " + body).toLowerCase();
                 if (all.contains("call") || all.contains("कॉल")) postCall(title, body);
                 else postMessage(title, body);
+            }
+
+            @android.webkit.JavascriptInterface
+            public void sent(String id, boolean ok) {
+                long sid = Long.parseLong(id);
+                org.json.JSONObject o = Sched.find(WaActivity.this, sid);
+                Sched.setStatus(WaActivity.this, sid, ok ? "sent" : "failed");
+                Sched.notifyResult(WaActivity.this, mySlot(), ok, o == null ? "" : o.optString("phone"));
             }
 
             @android.webkit.JavascriptInterface
@@ -178,6 +204,7 @@ public abstract class WaActivity extends Activity {
             }
         });
 
+        if (getIntent().getBooleanExtra("remove", false)) { removeAccount(); return; }
         if (getIntent().getBooleanExtra("reset", false)) { resetAccount(); return; }
         if (b != null) web.restoreState(b);
         else web.loadUrl("https://web.whatsapp.com/");
@@ -187,6 +214,15 @@ public abstract class WaActivity extends Activity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         if (intent.getBooleanExtra("reset", false)) resetAccount();
+        if (intent.getBooleanExtra("remove", false)) removeAccount();
+    }
+
+    /** "Account hatao": logout, stop background connection, close this slot. */
+    private void removeAccount() {
+        resetAccount();
+        stopService(new Intent(this, KeepAlive.SERVICES[mySlot()]));
+        getSystemService(android.app.NotificationManager.class).cancel(100 + mySlot());
+        finishAndRemoveTask();
     }
 
     /** Logout this account: wipe its cookies + storage, show a fresh QR code. */
@@ -232,7 +268,7 @@ public abstract class WaActivity extends Activity {
         runOnUiThread(() -> android.widget.Toast.makeText(this, s, android.widget.Toast.LENGTH_LONG).show());
     }
 
-    static final Class<?>[] SLOTS = { A1.class, A2.class, A3.class, A4.class, A5.class };
+    static final Class<?>[] SLOTS = { A1.class, A2.class, A3.class, A4.class, A5.class, A6.class, A7.class, A8.class, A9.class, A10.class };
 
     // Replaces the browser Notification API so WhatsApp Web's own message
     // notifications (sender + text) are passed to Android.
@@ -256,6 +292,24 @@ public abstract class WaActivity extends Activity {
             + "})();";
 
     private long pageLoadedAt;
+
+    /** The open account screen in this process (used by scheduled-message alarms). */
+    static volatile WaActivity current;
+    private long pendingSendId = -1;
+
+    /** Opens the chat with the message pre-filled, then presses Send. */
+    void sendScheduled(long id, String phone, String text) {
+        pendingSendId = id;
+        web.loadUrl("https://web.whatsapp.com/send?phone=" + phone + "&text=" + Uri.encode(text));
+    }
+
+    // Waits for WhatsApp to open the chat, clicks Send, reports back. Gives up after ~90 s.
+    private static final String SEND_JS =
+            "(function(){var id='__ID__',t=0;var iv=setInterval(function(){t++;"
+            + "var b=document.querySelector('[data-icon=\"send\"],[data-icon=\"wds-ic-send-filled\"],button[aria-label=\"Send\"],[data-testid=\"send\"]');"
+            + "if(b){(b.closest('button')||b).click();clearInterval(iv);setTimeout(function(){MWA.sent(id,true)},1500);return;}"
+            + "if(t>10&&t%5==0&&/invalid|not on WhatsApp/i.test((document.body&&document.body.innerText)||'')){clearInterval(iv);MWA.sent(id,false);return;}"
+            + "if(t>90){clearInterval(iv);MWA.sent(id,false);}},1000);})();";
 
     /** Unread count changed (from title). Shows a simple alert if WhatsApp's own one didn't come. */
     private void onUnread(int n) {
@@ -487,22 +541,24 @@ public abstract class WaActivity extends Activity {
 
     private void showSwitcher() {
         int me = mySlot();
-        CharSequence[] items = new CharSequence[SLOTS.length + 1];
-        for (int i = 0; i < SLOTS.length; i++) {
+        java.util.List<Integer> shown = MainActivity.activeSlots(this);
+        int k = shown.size();
+        CharSequence[] items = new CharSequence[k + 2];
+        for (int j = 0; j < k; j++) {
+            int i = shown.get(j);
             String label = "●  " + slotName(this, i) + (i == me ? "   ✓" : "");
             android.text.SpannableString s = new android.text.SpannableString(label);
             s.setSpan(new android.text.style.ForegroundColorSpan(MainActivity.color(this, i)), 0, 1, 0);
-            items[i] = s;
+            items[j] = s;
         }
-        items = java.util.Arrays.copyOf(items, SLOTS.length + 2);
-        items[SLOTS.length] = "🔄  Reload";
-        items[SLOTS.length + 1] = "⌂  Home screen";
+        items[k] = "🔄  Reload";
+        items[k + 1] = "⌂  Home screen";
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle("Switch WhatsApp")
                 .setItems(items, (dlg, which) -> {
-                    if (which == me) return;
-                    if (which == SLOTS.length) { web.reload(); toast("Reload ho raha hai…"); return; }
-                    Class<?> target = which < SLOTS.length ? SLOTS[which] : MainActivity.class;
+                    if (which < k && shown.get(which) == me) return;
+                    if (which == k) { web.reload(); toast("Reload ho raha hai…"); return; }
+                    Class<?> target = which < k ? SLOTS[shown.get(which)] : MainActivity.class;
                     Intent it = new Intent(this, target);
                     it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     startActivity(it);
@@ -564,6 +620,7 @@ public abstract class WaActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (current == this) current = null;
         CookieManager.getInstance().flush();
         web.destroy();
         super.onDestroy();

@@ -18,13 +18,23 @@ import android.widget.TextView;
 
 public class MainActivity extends Activity {
     /** One colour per account: teal, violet, coral, blue, amber. */
-    static final int[] COLORS = {0xFF00A884, 0xFF7F5AF0, 0xFFFF6B5B, 0xFF3A86FF, 0xFFFFB020};
+    static final int MAX = 10;
+    static final int[] COLORS = {0xFF00A884, 0xFF7F5AF0, 0xFFFF6B5B, 0xFF3A86FF, 0xFFFFB020,
+            0xFF25D366, 0xFFE84393, 0xFF00B4D8, 0xFFFF7A00, 0xFF607D8B};
 
     /** Colours the user can pick from for an account. */
     static final int[] PALETTE = {
             0xFF00A884, 0xFF25D366, 0xFF7F5AF0, 0xFFB15CFF,
             0xFFFF6B5B, 0xFFE84393, 0xFF3A86FF, 0xFF00B4D8,
             0xFFFFB020, 0xFFFF7A00, 0xFF8D6E63, 0xFF607D8B };
+
+    /** Slots the user has added (first 5 are on by default). */
+    static java.util.List<Integer> activeSlots(android.content.Context c) {
+        SharedPreferences p = c.getSharedPreferences("names", MODE_MULTI_PROCESS);
+        java.util.List<Integer> out = new java.util.ArrayList<>();
+        for (int i = 0; i < MAX; i++) if (p.getBoolean("show" + i, i < 5)) out.add(i);
+        return out;
+    }
 
     /** Account colour: the one the user picked, else the default. */
     static int color(android.content.Context c, int slot) {
@@ -56,7 +66,7 @@ public class MainActivity extends Activity {
 
         TextView title = text("Multi WA", 34, Color.WHITE, true);
         root.addView(title);
-        TextView sub = text("5 WhatsApp · ek hi app", 15, 0xB3FFFFFF, false);
+        TextView sub = text("Saare WhatsApp · ek hi app", 15, 0xB3FFFFFF, false);
         sub.setPadding(0, px(4), 0, px(12));
         root.addView(sub);
 
@@ -71,12 +81,36 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         llp.bottomMargin = px(22);
-        root.addView(lockBtn, llp);
+        TextView schedBtn = text("⏰ Schedule", 13, Color.WHITE, true);
+        schedBtn.setPadding(px(14), px(7), px(14), px(7));
+        GradientDrawable chip2 = new GradientDrawable();
+        chip2.setCornerRadius(px(16));
+        chip2.setColor(0x22FFFFFF);
+        schedBtn.setBackground(chip2);
+        schedBtn.setOnClickListener(v -> startActivity(new Intent(this, ScheduleActivity.class)));
+        LinearLayout chips = new LinearLayout(this);
+        chips.addView(lockBtn);
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(-2, -2);
+        slp.leftMargin = px(10);
+        chips.addView(schedBtn, slp);
+        root.addView(chips, llp);
         updateLockLabel();
 
         list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
         root.addView(list);
+
+        // "+ Account jodo": turns on the next free slot and opens its QR code.
+        TextView addBtn = text("+  Account jodo", 15, Color.WHITE, true);
+        addBtn.setGravity(Gravity.CENTER);
+        addBtn.setPadding(0, px(14), 0, px(14));
+        GradientDrawable ab = new GradientDrawable();
+        ab.setCornerRadius(px(20));
+        ab.setColor(0x10FFFFFF);
+        ab.setStroke(px(1), 0x55FFFFFF, px(6), px(4));
+        addBtn.setBackground(ab);
+        addBtn.setOnClickListener(v -> addAccount());
+        root.addView(addBtn);
 
         TextView hint = text("Lamba dabao → naam ya rang badlo", 12, 0x80FFFFFF, false);
         hint.setGravity(Gravity.CENTER);
@@ -117,7 +151,7 @@ public class MainActivity extends Activity {
         @Override public void run() {
             prefs = getSharedPreferences("names", MODE_MULTI_PROCESS); // reload from other processes
             StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < 5; i++) sb.append(prefs.getInt("u" + i, 0)).append(',');
+            for (int i = 0; i < MAX; i++) sb.append(prefs.getInt("u" + i, 0)).append(',');
             if (!sb.toString().equals(lastCounts)) {
                 boolean first = lastCounts.isEmpty();
                 lastCounts = sb.toString();
@@ -144,7 +178,7 @@ public class MainActivity extends Activity {
 
     private void build(boolean animate) {
         list.removeAllViews();
-        for (int i = 0; i < 5; i++) list.addView(card(i, animate));
+        for (int i : activeSlots(this)) list.addView(card(i, animate));
     }
 
     private View card(int i, boolean animate) {
@@ -221,11 +255,44 @@ public class MainActivity extends Activity {
     private void editMenu(int i) {
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle(WaActivity.slotName(this, i))
-                .setItems(new String[]{"✏️  Naam badlo", "🎨  Rang badlo", "🚪  Logout / reset"}, (d, w) -> {
+                .setItems(new String[]{"✏️  Naam badlo", "🎨  Rang badlo", "🚪  Logout / reset", "➖  Account hatao"}, (d, w) -> {
                     if (w == 0) rename(i);
                     else if (w == 1) pickColor(i);
-                    else confirmReset(i);
+                    else if (w == 2) confirmReset(i);
+                    else confirmRemove(i);
                 })
+                .show();
+    }
+
+    private void addAccount() {
+        for (int i = 0; i < MAX; i++) {
+            if (!prefs.getBoolean("show" + i, i < 5)) {
+                prefs.edit().putBoolean("show" + i, true)
+                        .putString("n" + i, "WhatsApp " + (i + 1)).putInt("u" + i, 0).commit();
+                App.refreshChannels(this);
+                build(false);
+                Intent it = new Intent(this, WaActivity.SLOTS[i]);
+                it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(it); // shows QR code to link the new number
+                return;
+            }
+        }
+        android.widget.Toast.makeText(this, "Maximum " + MAX + " accounts ho sakte hain", android.widget.Toast.LENGTH_LONG).show();
+    }
+
+    private void confirmRemove(int i) {
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle(WaActivity.slotName(this, i) + " hatayein?")
+                .setMessage("Ye account logout hoke list se hat jaayega. Baad mein \"+ Account jodo\" se dobara jod sakte ho.")
+                .setPositiveButton("Hatao", (d, w) -> {
+                    prefs.edit().putBoolean("show" + i, false).putInt("u" + i, 0).remove("n" + i).remove("c" + i).commit();
+                    Intent it = new Intent(this, WaActivity.SLOTS[i]);
+                    it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    it.putExtra("remove", true);
+                    startActivity(it);
+                    build(false);
+                })
+                .setNegativeButton("Cancel", null)
                 .show();
     }
 
