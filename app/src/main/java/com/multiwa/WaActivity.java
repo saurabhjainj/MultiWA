@@ -90,7 +90,9 @@ public abstract class WaActivity extends Activity {
 
             @Override
             public void onPageFinished(WebView v, String url) {
-                v.evaluateJavascript(NOTIFY_JS, null);
+                pageLoadedAt = System.currentTimeMillis();
+                v.evaluateJavascript(NOTIFY_JS, null); // fallback if document-start injection unsupported
+                if (!visible) v.evaluateJavascript("window.__mwaSetBg&&__mwaSetBg(true)", null);
             }
         });
 
@@ -102,7 +104,24 @@ public abstract class WaActivity extends Activity {
                 if (all.contains("call") || all.contains("कॉल")) postCall(title, body);
                 else postMessage(title, body);
             }
+
+            @android.webkit.JavascriptInterface
+            public void count(int n) {
+                runOnUiThread(() -> onUnread(n));
+            }
+
+            @android.webkit.JavascriptInterface
+            public void save(String dataUrl, String mime, String name) {
+                saveFile(dataUrl, mime, name);
+            }
         }, "MWA");
+
+        // Inject the notification hook BEFORE WhatsApp Web's own scripts run,
+        // so WhatsApp sees notifications as allowed and every alert reaches Android.
+        if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            androidx.webkit.WebViewCompat.addDocumentStartJavaScript(web, NOTIFY_JS,
+                    java.util.Collections.singleton("https://web.whatsapp.com"));
+        }
 
         // Keep this account's process alive in background so messages keep arriving.
         startForegroundService(new Intent(this, KeepAlive.SERVICES[mySlot()]));
@@ -114,10 +133,7 @@ public abstract class WaActivity extends Activity {
                 int n = 0;
                 java.util.regex.Matcher m = java.util.regex.Pattern.compile("^\\((\\d+)\\)").matcher(title == null ? "" : title);
                 if (m.find()) n = Integer.parseInt(m.group(1));
-                if (n > lastUnread && System.currentTimeMillis() - lastPreview > 4000)
-                    postMessage("New message", n + (n == 1 ? " unread chat" : " unread chats"));
-                if (n == 0) cancelMessage();
-                lastUnread = n;
+                onUnread(n);
             }
 
             @Override
@@ -139,8 +155,81 @@ public abstract class WaActivity extends Activity {
             }
         });
 
+        // Photos, videos, PDFs etc. → saved to Downloads/MultiWA
+        web.setDownloadListener((url, ua, cd, mime, len) -> {
+            String ext = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(mime);
+            String name = slotName(this, mySlot()).replaceAll("[^A-Za-z0-9]", "") + "_"
+                    + new java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(new java.util.Date())
+                    + (ext != null ? "." + ext : "");
+            if (url.startsWith("blob:")) {
+                web.evaluateJavascript("(async()=>{try{const r=await fetch('" + url + "');const b=await r.blob();"
+                        + "const f=new FileReader();f.onloadend=()=>MWA.save(f.result,b.type||'" + mime + "','" + name + "');"
+                        + "f.readAsDataURL(b);}catch(e){}})()", null);
+            } else if (url.startsWith("data:")) {
+                saveFile(url, mime, name);
+            } else {
+                android.app.DownloadManager.Request r = new android.app.DownloadManager.Request(Uri.parse(url));
+                r.addRequestHeader("Cookie", CookieManager.getInstance().getCookie(url));
+                r.addRequestHeader("User-Agent", UA);
+                r.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, "MultiWA/" + name);
+                r.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                getSystemService(android.app.DownloadManager.class).enqueue(r);
+                toast("Download shuru…");
+            }
+        });
+
+        if (getIntent().getBooleanExtra("reset", false)) { resetAccount(); return; }
         if (b != null) web.restoreState(b);
         else web.loadUrl("https://web.whatsapp.com/");
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        if (intent.getBooleanExtra("reset", false)) resetAccount();
+    }
+
+    /** Logout this account: wipe its cookies + storage, show a fresh QR code. */
+    private void resetAccount() {
+        android.webkit.WebStorage.getInstance().deleteAllData();
+        CookieManager.getInstance().removeAllCookies(null);
+        CookieManager.getInstance().flush();
+        web.clearCache(true);
+        web.clearHistory();
+        getSharedPreferences("names", MODE_MULTI_PROCESS).edit().putInt("u" + mySlot(), 0).apply();
+        cancelMessage();
+        web.loadUrl("https://web.whatsapp.com/");
+        toast(slotName(this, mySlot()) + " reset ho gaya. Naya QR scan karo.");
+    }
+
+    /** Save a base64 "data:" URL into Downloads/MultiWA. */
+    private void saveFile(String dataUrl, String mime, String name) {
+        try {
+            int comma = dataUrl.indexOf(',');
+            byte[] bytes = android.util.Base64.decode(dataUrl.substring(comma + 1), android.util.Base64.DEFAULT);
+            android.content.ContentValues v = new android.content.ContentValues();
+            v.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name);
+            v.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mime);
+            java.io.OutputStream out;
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                v.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "Download/MultiWA");
+                Uri u = getContentResolver().insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+                out = getContentResolver().openOutputStream(u);
+            } else {
+                java.io.File dir = new java.io.File(getExternalFilesDir(null), "MultiWA");
+                dir.mkdirs();
+                out = new java.io.FileOutputStream(new java.io.File(dir, name));
+            }
+            out.write(bytes);
+            out.close();
+            toast("Saved: Downloads/MultiWA/" + name);
+        } catch (Exception e) {
+            toast("Save nahi ho paaya");
+        }
+    }
+
+    private void toast(String s) {
+        runOnUiThread(() -> android.widget.Toast.makeText(this, s, android.widget.Toast.LENGTH_LONG).show());
     }
 
     static final Class<?>[] SLOTS = { A1.class, A2.class, A3.class, A4.class, A5.class };
@@ -149,11 +238,42 @@ public abstract class WaActivity extends Activity {
     // notifications (sender + text) are passed to Android.
     private static final String NOTIFY_JS =
             "(function(){if(window.__mwa)return;window.__mwa=1;"
-            + "function N(t,o){o=o||{};try{MWA.show(String(t||''),String(o.body||''))}catch(e){}"
-            + "this.close=function(){};this.addEventListener=function(){};}"
+            // 1. Browser notifications -> Android
+            + "function send(t,o){o=o||{};try{MWA.show(String(t||''),String(o.body||''))}catch(e){}}"
+            + "function N(t,o){send(t,o);this.close=function(){};this.addEventListener=function(){};}"
             + "N.permission='granted';"
             + "N.requestPermission=function(cb){if(cb)cb('granted');return Promise.resolve('granted')};"
-            + "window.Notification=N;})();";
+            + "try{Object.defineProperty(window,'Notification',{value:N,writable:true,configurable:true})}catch(e){window.Notification=N}"
+            + "try{if(window.ServiceWorkerRegistration)ServiceWorkerRegistration.prototype.showNotification=function(t,o){send(t,o);return Promise.resolve()}}catch(e){}"
+            + "try{var q=navigator.permissions.query.bind(navigator.permissions);"
+            + "navigator.permissions.query=function(p){if(p&&p.name==='notifications')return Promise.resolve({state:'granted',onchange:null});return q(p)}}catch(e){}"
+            // 2. Tell WhatsApp when the app is in background (so it sends alerts)
+            + "var bg=false;window.__mwaSetBg=function(b){bg=b;try{window.dispatchEvent(new Event(b?'blur':'focus'))}catch(e){}};"
+            + "try{document.hasFocus=function(){return !bg}}catch(e){}"
+            // 3. Backup: watch unread count in the title every 1.5 s
+            + "var last=-1;setInterval(function(){var m=/^\\((\\d+)\\)/.exec(document.title||'');"
+            + "var n=m?parseInt(m[1]):0;if(n!==last){last=n;try{MWA.count(n)}catch(e){}}},1500);"
+            + "})();";
+
+    private long pageLoadedAt;
+
+    /** Unread count changed (from title). Shows a simple alert if WhatsApp's own one didn't come. */
+    private void onUnread(int n) {
+        if (n == lastUnread) return;
+        int prev = lastUnread;
+        lastUnread = n;
+        getSharedPreferences("names", MODE_MULTI_PROCESS).edit().putInt("u" + mySlot(), n).apply();
+        if (n == 0) { cancelMessage(); return; }
+        // Ignore old unread chats counted while the page is first loading.
+        if (n > prev && System.currentTimeMillis() - pageLoadedAt > 25000) {
+            long t = System.currentTimeMillis();
+            web.postDelayed(() -> {
+                // Skip if WhatsApp's own notification (with sender + text) already came.
+                if (lastPreview < t - 4000 && lastUnread > 0)
+                    postMessage("New message", lastUnread + (lastUnread == 1 ? " unread chat" : " unread chats"));
+            }, 2500);
+        }
+    }
 
     private volatile boolean visible;
     private GradientDrawable switchBg;
@@ -203,7 +323,8 @@ public abstract class WaActivity extends Activity {
                 .setCategory(android.app.Notification.CATEGORY_MESSAGE)
                 .setWhen(now)
                 .setShowWhen(true)
-                .setNumber(msgs.size())
+                .setNumber(Math.max(lastUnread, msgs.size())) // count on the app icon badge
+                .setBadgeIconType(android.app.Notification.BADGE_ICON_SMALL)
                 .setAutoCancel(true)
                 .setContentIntent(pi)
                 .addAction(new android.app.Notification.Action.Builder(
@@ -294,6 +415,8 @@ public abstract class WaActivity extends Activity {
     protected void onResume() {
         super.onResume();
         visible = true;
+        Lock.check(this);
+        if (web != null) web.evaluateJavascript("window.__mwaSetBg&&__mwaSetBg(false)", null);
         cancelMessage();
         // Pick up a colour changed on the home screen.
         int c = MainActivity.color(this, mySlot());
@@ -305,6 +428,8 @@ public abstract class WaActivity extends Activity {
     protected void onPause() {
         super.onPause();
         visible = false;
+        Lock.touch(this);
+        if (web != null) web.evaluateJavascript("window.__mwaSetBg&&__mwaSetBg(true)", null);
     }
 
     private int mySlot() {
@@ -369,11 +494,14 @@ public abstract class WaActivity extends Activity {
             s.setSpan(new android.text.style.ForegroundColorSpan(MainActivity.color(this, i)), 0, 1, 0);
             items[i] = s;
         }
-        items[SLOTS.length] = "⌂  Home screen";
+        items = java.util.Arrays.copyOf(items, SLOTS.length + 2);
+        items[SLOTS.length] = "🔄  Reload";
+        items[SLOTS.length + 1] = "⌂  Home screen";
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle("Switch WhatsApp")
                 .setItems(items, (dlg, which) -> {
                     if (which == me) return;
+                    if (which == SLOTS.length) { web.reload(); toast("Reload ho raha hai…"); return; }
                     Class<?> target = which < SLOTS.length ? SLOTS[which] : MainActivity.class;
                     Intent it = new Intent(this, target);
                     it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);

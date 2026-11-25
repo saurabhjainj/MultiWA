@@ -32,6 +32,7 @@ public class MainActivity extends Activity {
     }
 
     private SharedPreferences prefs;
+    private TextView lockBtn;
     private LinearLayout list;
     private float dp;
 
@@ -56,8 +57,22 @@ public class MainActivity extends Activity {
         TextView title = text("Multi WA", 34, Color.WHITE, true);
         root.addView(title);
         TextView sub = text("5 WhatsApp · ek hi app", 15, 0xB3FFFFFF, false);
-        sub.setPadding(0, px(4), 0, px(28));
+        sub.setPadding(0, px(4), 0, px(12));
         root.addView(sub);
+
+        // App lock on/off chip
+        lockBtn = text("", 13, Color.WHITE, true);
+        lockBtn.setPadding(px(14), px(7), px(14), px(7));
+        GradientDrawable chip = new GradientDrawable();
+        chip.setCornerRadius(px(16));
+        chip.setColor(0x22FFFFFF);
+        lockBtn.setBackground(chip);
+        lockBtn.setOnClickListener(v -> { Lock.setEnabled(this, !Lock.enabled(this)); updateLockLabel(); });
+        LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        llp.bottomMargin = px(22);
+        root.addView(lockBtn, llp);
+        updateLockLabel();
 
         list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
@@ -93,6 +108,38 @@ public class MainActivity extends Activity {
             startActivity(new Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                     android.net.Uri.parse("package:" + getPackageName())));
         } catch (Exception ignored) {}
+    }
+
+    // Refresh unread badges every 3 seconds while the home screen is open.
+    private final android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private String lastCounts = "";
+    private final Runnable refresher = new Runnable() {
+        @Override public void run() {
+            prefs = getSharedPreferences("names", MODE_MULTI_PROCESS); // reload from other processes
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < 5; i++) sb.append(prefs.getInt("u" + i, 0)).append(',');
+            if (!sb.toString().equals(lastCounts)) {
+                boolean first = lastCounts.isEmpty();
+                lastCounts = sb.toString();
+                if (!first) build(false);
+            }
+            handler.postDelayed(this, 3000);
+        }
+    };
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        lastCounts = "x";          // force one refresh when coming back
+        handler.post(refresher);
+        Lock.check(this);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        Lock.touch(this);
+        handler.removeCallbacks(refresher);
     }
 
     private void build(boolean animate) {
@@ -134,6 +181,22 @@ public class MainActivity extends Activity {
         texts.addView(text("Account " + (i + 1), 12, 0x99FFFFFF, false));
         row.addView(texts, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
 
+        int unread = prefs.getInt("u" + i, 0);
+        if (unread > 0) {
+            TextView badge = text(unread > 99 ? "99+" : String.valueOf(unread), 12, Color.WHITE, true);
+            badge.setGravity(Gravity.CENTER);
+            badge.setPadding(px(7), 0, px(7), 0);
+            badge.setMinWidth(px(24));
+            GradientDrawable bb = new GradientDrawable();
+            bb.setCornerRadius(px(12));
+            bb.setColor(0xFFFF3B30);
+            badge.setBackground(bb);
+            LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, px(24));
+            blp.rightMargin = px(8);
+            row.addView(badge, blp);
+        }
+
         TextView arrow = text("›", 30, color, true);
         row.addView(arrow);
 
@@ -158,10 +221,30 @@ public class MainActivity extends Activity {
     private void editMenu(int i) {
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle(WaActivity.slotName(this, i))
-                .setItems(new String[]{"✏️  Naam badlo", "🎨  Rang badlo"}, (d, w) -> {
-                    if (w == 0) rename(i); else pickColor(i);
+                .setItems(new String[]{"✏️  Naam badlo", "🎨  Rang badlo", "🚪  Logout / reset"}, (d, w) -> {
+                    if (w == 0) rename(i);
+                    else if (w == 1) pickColor(i);
+                    else confirmReset(i);
                 })
                 .show();
+    }
+
+    private void confirmReset(int i) {
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle(WaActivity.slotName(this, i) + " logout karein?")
+                .setMessage("Is slot se WhatsApp hat jaayega. Dobara jodne ke liye naya QR scan karna hoga.")
+                .setPositiveButton("Logout", (d, w) -> {
+                    Intent it = new Intent(this, WaActivity.SLOTS[i]);
+                    it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    it.putExtra("reset", true);
+                    startActivity(it);
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void updateLockLabel() {
+        lockBtn.setText(Lock.enabled(this) ? "🔒 Lock ON" : "🔓 Lock OFF");
     }
 
     private void pickColor(int i) {
