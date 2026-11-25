@@ -20,6 +20,17 @@ public class MainActivity extends Activity {
     /** One colour per account: teal, violet, coral, blue, amber. */
     static final int[] COLORS = {0xFF00A884, 0xFF7F5AF0, 0xFFFF6B5B, 0xFF3A86FF, 0xFFFFB020};
 
+    /** Colours the user can pick from for an account. */
+    static final int[] PALETTE = {
+            0xFF00A884, 0xFF25D366, 0xFF7F5AF0, 0xFFB15CFF,
+            0xFFFF6B5B, 0xFFE84393, 0xFF3A86FF, 0xFF00B4D8,
+            0xFFFFB020, 0xFFFF7A00, 0xFF8D6E63, 0xFF607D8B };
+
+    /** Account colour: the one the user picked, else the default. */
+    static int color(android.content.Context c, int slot) {
+        return c.getSharedPreferences("names", MODE_MULTI_PROCESS).getInt("c" + slot, COLORS[slot]);
+    }
+
     private SharedPreferences prefs;
     private LinearLayout list;
     private float dp;
@@ -52,7 +63,7 @@ public class MainActivity extends Activity {
         list.setOrientation(LinearLayout.VERTICAL);
         root.addView(list);
 
-        TextView hint = text("Lamba dabao → naam badlo", 12, 0x80FFFFFF, false);
+        TextView hint = text("Lamba dabao → naam ya rang badlo", 12, 0x80FFFFFF, false);
         hint.setGravity(Gravity.CENTER);
         hint.setPadding(0, px(16), 0, 0);
         root.addView(hint);
@@ -65,6 +76,23 @@ public class MainActivity extends Activity {
                 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
                    != android.content.pm.PackageManager.PERMISSION_GRANTED)
             requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 7);
+        else
+            askBatteryExemption();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int code, String[] perms, int[] res) {
+        if (code == 7) askBatteryExemption();
+    }
+
+    /** Ask Android not to put the app to sleep, so messages arrive without delay. */
+    private void askBatteryExemption() {
+        android.os.PowerManager pm = getSystemService(android.os.PowerManager.class);
+        if (pm.isIgnoringBatteryOptimizations(getPackageName())) return;
+        try {
+            startActivity(new Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    android.net.Uri.parse("package:" + getPackageName())));
+        } catch (Exception ignored) {}
     }
 
     private void build(boolean animate) {
@@ -74,7 +102,7 @@ public class MainActivity extends Activity {
 
     private View card(int i, boolean animate) {
         String name = WaActivity.slotName(this, i);
-        int color = COLORS[i];
+        int color = color(this, i);
 
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -116,7 +144,7 @@ public class MainActivity extends Activity {
                     it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     startActivity(it);
                 }));
-        row.setOnLongClickListener(v -> { rename(i); return true; });
+        row.setOnLongClickListener(v -> { editMenu(i); return true; });
 
         if (animate) {
             row.setAlpha(0f);
@@ -125,6 +153,51 @@ public class MainActivity extends Activity {
                     .setInterpolator(new DecelerateInterpolator()).start();
         }
         return row;
+    }
+
+    private void editMenu(int i) {
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle(WaActivity.slotName(this, i))
+                .setItems(new String[]{"✏️  Naam badlo", "🎨  Rang badlo"}, (d, w) -> {
+                    if (w == 0) rename(i); else pickColor(i);
+                })
+                .show();
+    }
+
+    private void pickColor(int i) {
+        LinearLayout grid = new LinearLayout(this);
+        grid.setOrientation(LinearLayout.VERTICAL);
+        grid.setPadding(px(20), px(12), px(20), px(4));
+        AlertDialog dlg = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle(WaActivity.slotName(this, i) + " ka rang")
+                .setView(grid)
+                .setNegativeButton("Cancel", null)
+                .create();
+        int current = color(this, i);
+        LinearLayout row = null;
+        for (int k = 0; k < PALETTE.length; k++) {
+            if (k % 4 == 0) {
+                row = new LinearLayout(this);
+                row.setGravity(Gravity.CENTER);
+                grid.addView(row);
+            }
+            int c = PALETTE[k];
+            TextView dot = text(c == current ? "✓" : "", 20, Color.WHITE, true);
+            dot.setGravity(Gravity.CENTER);
+            GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{c, darker(c)});
+            g.setShape(GradientDrawable.OVAL);
+            if (c == current) g.setStroke(px(3), Color.WHITE);
+            dot.setBackground(g);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(px(48), px(48));
+            lp.setMargins(px(8), px(8), px(8), px(8));
+            row.addView(dot, lp);
+            dot.setOnClickListener(v -> {
+                prefs.edit().putInt("c" + i, c).commit();
+                dlg.dismiss();
+                build(false);
+            });
+        }
+        dlg.show();
     }
 
     private void rename(int i) {

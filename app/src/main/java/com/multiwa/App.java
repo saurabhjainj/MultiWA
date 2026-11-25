@@ -36,7 +36,7 @@ public class App extends Application {
             NotificationChannel ch = new NotificationChannel("msg_" + s,
                     WaActivity.slotName(c, s) + " messages", NotificationManager.IMPORTANCE_HIGH);
             ch.enableLights(true);
-            ch.setLightColor(MainActivity.COLORS[s]);
+            ch.setLightColor(MainActivity.color(c, s));
             ch.enableVibration(true);
             long[] v = new long[(s + 1) * 2];
             for (int k = 0; k < v.length; k += 2) { v[k] = k == 0 ? 0 : 110; v[k + 1] = 140; }
@@ -54,7 +54,7 @@ public class App extends Application {
             call.enableVibration(true);
             call.setVibrationPattern(new long[]{0, 800, 500, 800, 500, 800});
             call.enableLights(true);
-            call.setLightColor(MainActivity.COLORS[s]);
+            call.setLightColor(MainActivity.color(c, s));
             nm.createNotificationChannel(call);
         }
     }

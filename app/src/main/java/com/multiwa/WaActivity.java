@@ -48,9 +48,16 @@ public abstract class WaActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
-        web = new WebView(this);
+        // Pretend the page is always on screen, so Android/Chrome does not slow down
+        // WhatsApp Web's timers in background (that slowdown delays notifications).
+        web = new WebView(this) {
+            @Override
+            protected void onWindowVisibilityChanged(int visibility) {
+                super.onWindowVisibilityChanged(View.VISIBLE);
+            }
+        };
         // Status bar in the account's colour, so you always know which number is open.
-        getWindow().setStatusBarColor(MainActivity.darker(MainActivity.COLORS[mySlot()]));
+        getWindow().setStatusBarColor(MainActivity.darker(MainActivity.color(this, mySlot())));
         FrameLayout frame = new FrameLayout(this);
         frame.addView(web);
         frame.addView(makeSwitchButton());
@@ -149,6 +156,7 @@ public abstract class WaActivity extends Activity {
             + "window.Notification=N;})();";
 
     private volatile boolean visible;
+    private GradientDrawable switchBg;
     private volatile long lastPreview;
     private int lastUnread;
 
@@ -158,7 +166,7 @@ public abstract class WaActivity extends Activity {
     private void postMessage(String sender, String body) {
         if (visible) return; // already looking at this account
         int s = mySlot();
-        int color = MainActivity.COLORS[s];
+        int color = MainActivity.color(this, s);
         String name = slotName(this, s);
         long now = System.currentTimeMillis();
 
@@ -173,22 +181,24 @@ public abstract class WaActivity extends Activity {
         android.app.PendingIntent pi = android.app.PendingIntent.getActivity(this, s, open,
                 android.app.PendingIntent.FLAG_IMMUTABLE | android.app.PendingIntent.FLAG_UPDATE_CURRENT);
 
-        android.app.Person me = new android.app.Person.Builder().setName("Aap").build();
-        android.app.Notification.MessagingStyle style = new android.app.Notification.MessagingStyle(me)
-                .setConversationTitle("💬 " + name)
-                .setGroupConversation(true);
+        String[] last = msgs.get(msgs.size() - 1);
+        android.text.SpannableStringBuilder all = new android.text.SpannableStringBuilder();
         for (String[] m : msgs) {
-            android.app.Person p = new android.app.Person.Builder()
-                    .setName(m[0])
-                    .setIcon(android.graphics.drawable.Icon.createWithBitmap(avatar(m[0], 0xFF54656F)))
-                    .build();
-            style.addMessage(m[1], Long.parseLong(m[2]), p);
+            if (all.length() > 0) all.append('\n');
+            appendLine(all, m[0], m[1]);
         }
+        android.text.SpannableStringBuilder one = new android.text.SpannableStringBuilder();
+        appendLine(one, last[0], last[1]);
+        android.graphics.Bitmap av = avatar(name, color);
+        String label = name + (msgs.size() > 1 ? "  ·  " + msgs.size() + " naye messages" : "");
 
         android.app.Notification n = new android.app.Notification.Builder(this, "msg_" + s)
                 .setSmallIcon(R.drawable.ic_stat)
-                .setLargeIcon(avatar(name, color))
-                .setStyle(style)
+                .setContentTitle(name + " · " + last[0])
+                .setContentText(last[1])
+                .setStyle(new android.app.Notification.DecoratedCustomViewStyle())
+                .setCustomContentView(card(label, color, av, one, 1))
+                .setCustomBigContentView(card(label, color, av, all, 8))
                 .setColor(color)
                 .setCategory(android.app.Notification.CATEGORY_MESSAGE)
                 .setWhen(now)
@@ -206,14 +216,17 @@ public abstract class WaActivity extends Activity {
     private void postCall(String caller, String body) {
         if (visible) return;
         int s = mySlot();
-        int color = MainActivity.COLORS[s];
+        int color = MainActivity.color(this, s);
         String name = slotName(this, s);
         Intent open = new Intent(this, getClass()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         android.app.PendingIntent pi = android.app.PendingIntent.getActivity(this, 50 + s, open,
                 android.app.PendingIntent.FLAG_IMMUTABLE | android.app.PendingIntent.FLAG_UPDATE_CURRENT);
+        android.text.SpannableStringBuilder callText = new android.text.SpannableStringBuilder();
+        appendLine(callText, caller, "call kar rahe hain");
         android.app.Notification n = new android.app.Notification.Builder(this, "call_" + s)
                 .setSmallIcon(R.drawable.ic_stat)
-                .setLargeIcon(avatar(name, color))
+                .setStyle(new android.app.Notification.DecoratedCustomViewStyle())
+                .setCustomContentView(card("📞 " + name + "  ·  call", color, avatar(name, color), callText, 2))
                 .setContentTitle("📞 " + name + " pe call aa rahi hai")
                 .setContentText(caller + (body.isEmpty() ? "" : " · " + body))
                 .setSubText(name)
@@ -227,6 +240,29 @@ public abstract class WaActivity extends Activity {
                 .build();
         n.flags |= android.app.Notification.FLAG_INSISTENT; // keep ringing until seen
         getSystemService(android.app.NotificationManager.class).notify(60 + s, n);
+    }
+
+    /** Style A "Rangeen card" notification view, tinted in the account's colour. */
+    private android.widget.RemoteViews card(String label, int color, android.graphics.Bitmap av,
+                                            CharSequence body, int maxLines) {
+        android.widget.RemoteViews rv = new android.widget.RemoteViews(getPackageName(), R.layout.notif_card);
+        rv.setInt(R.id.bg, "setColorFilter", color);
+        rv.setInt(R.id.bg, "setImageAlpha", 46);      // light tint of account colour
+        rv.setInt(R.id.strip, "setColorFilter", color);
+        rv.setImageViewBitmap(R.id.avatar, av);
+        rv.setTextViewText(R.id.account, label.toUpperCase());
+        rv.setTextColor(R.id.account, color);
+        rv.setTextViewText(R.id.body, body);
+        rv.setInt(R.id.body, "setMaxLines", maxLines);
+        return rv;
+    }
+
+    /** "Sender: message" with the sender in bold. */
+    private static void appendLine(android.text.SpannableStringBuilder sb, String sender, String msg) {
+        int st = sb.length();
+        sb.append(sender);
+        sb.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD), st, sb.length(), 0);
+        sb.append("  ").append(msg);
     }
 
     /** Round coloured badge with the first letter, e.g. green "O" for Office. */
@@ -259,6 +295,10 @@ public abstract class WaActivity extends Activity {
         super.onResume();
         visible = true;
         cancelMessage();
+        // Pick up a colour changed on the home screen.
+        int c = MainActivity.color(this, mySlot());
+        getWindow().setStatusBarColor(MainActivity.darker(c));
+        if (switchBg != null) switchBg.setColor((c & 0x00FFFFFF) | 0xE6000000);
     }
 
     @Override
@@ -288,10 +328,11 @@ public abstract class WaActivity extends Activity {
         b.setGravity(Gravity.CENTER);
         GradientDrawable bg = new GradientDrawable();
         bg.setShape(GradientDrawable.OVAL);
-        int c = MainActivity.COLORS[mySlot()];
+        int c = MainActivity.color(this, mySlot());
         bg.setColor((c & 0x00FFFFFF) | 0xE6000000);
         bg.setStroke((int) (2 * getResources().getDisplayMetrics().density), Color.WHITE);
         b.setBackground(bg);
+        switchBg = bg;
         b.setElevation(8);
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(d, d, Gravity.END | Gravity.TOP);
         lp.topMargin = (int) (getResources().getDisplayMetrics().heightPixels * 0.35f);
@@ -325,7 +366,7 @@ public abstract class WaActivity extends Activity {
         for (int i = 0; i < SLOTS.length; i++) {
             String label = "●  " + slotName(this, i) + (i == me ? "   ✓" : "");
             android.text.SpannableString s = new android.text.SpannableString(label);
-            s.setSpan(new android.text.style.ForegroundColorSpan(MainActivity.COLORS[i]), 0, 1, 0);
+            s.setSpan(new android.text.style.ForegroundColorSpan(MainActivity.color(this, i)), 0, 1, 0);
             items[i] = s;
         }
         items[SLOTS.length] = "⌂  Home screen";

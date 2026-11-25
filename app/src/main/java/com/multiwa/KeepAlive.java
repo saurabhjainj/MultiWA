@@ -31,13 +31,37 @@ public abstract class KeepAlive extends Service {
                 .setSmallIcon(R.drawable.ic_stat)
                 .setContentTitle("🟢 " + WaActivity.slotName(this, s) + " · online")
                 .setContentText("Naye messages aate hi bata dunga")
-                .setLargeIcon(WaActivity.avatar(WaActivity.slotName(this, s), MainActivity.COLORS[s]))
-                .setColor(MainActivity.COLORS[s])
+                .setLargeIcon(WaActivity.avatar(WaActivity.slotName(this, s), MainActivity.color(this, s)))
+                .setColor(MainActivity.color(this, s))
                 .setGroup("bg")
                 .setOngoing(true)
                 .build();
         startForeground(100 + s, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+        // Keep Wi-Fi awake with screen off so the WhatsApp connection is not dropped.
+        if (wifiLock == null) {
+            android.net.wifi.WifiManager wm = getApplicationContext().getSystemService(android.net.wifi.WifiManager.class);
+            wifiLock = wm.createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF, "multiwa:" + s);
+            wifiLock.setReferenceCounted(false);
+            wifiLock.acquire();
+        }
+        // Keep CPU awake with screen off so WhatsApp Web handles new messages instantly.
+        if (cpuLock == null) {
+            android.os.PowerManager pm = getSystemService(android.os.PowerManager.class);
+            cpuLock = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "multiwa:cpu" + s);
+            cpuLock.setReferenceCounted(false);
+            cpuLock.acquire();
+        }
         return START_NOT_STICKY;
+    }
+
+    private android.net.wifi.WifiManager.WifiLock wifiLock;
+    private android.os.PowerManager.WakeLock cpuLock;
+
+    @Override
+    public void onDestroy() {
+        if (wifiLock != null && wifiLock.isHeld()) wifiLock.release();
+        if (cpuLock != null && cpuLock.isHeld()) cpuLock.release();
+        super.onDestroy();
     }
 
     @Override
