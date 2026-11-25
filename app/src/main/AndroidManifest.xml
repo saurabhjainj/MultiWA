@@ -5,6 +5,9 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <application
         android:name=".App"
@@ -43,5 +46,26 @@
             android:process=":wa5" android:taskAffinity="com.multiwa.wa5"
             android:launchMode="singleTask" android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode" />
+        <!-- Keep-alive service in each account's process -->
+        <service android:name=".KeepAlive$S1" android:process=":wa1" android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Keeps chat session connected for message notifications" />
+        </service>
+        <service android:name=".KeepAlive$S2" android:process=":wa2" android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Keeps chat session connected for message notifications" />
+        </service>
+        <service android:name=".KeepAlive$S3" android:process=":wa3" android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Keeps chat session connected for message notifications" />
+        </service>
+        <service android:name=".KeepAlive$S4" android:process=":wa4" android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Keeps chat session connected for message notifications" />
+        </service>
+        <service android:name=".KeepAlive$S5" android:process=":wa5" android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Keeps chat session connected for message notifications" />
+        </service>
     </application>
 </manifest>

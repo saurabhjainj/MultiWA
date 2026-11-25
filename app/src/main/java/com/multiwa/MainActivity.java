@@ -59,6 +59,12 @@ public class MainActivity extends Activity {
 
         setContentView(sv);
         build(true);
+
+        // Android 13+: ask once for permission to show message notifications.
+        if (android.os.Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                   != android.content.pm.PackageManager.PERMISSION_GRANTED)
+            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 7);
     }
 
     private void build(boolean animate) {
@@ -131,6 +137,7 @@ public class MainActivity extends Activity {
                 .setPositiveButton("Save", (d, w) -> {
                     String n = in.getText().toString().trim();
                     if (!n.isEmpty()) prefs.edit().putString("n" + i, n).commit();
+                    App.refreshChannels(this);
                     build(false);
                 })
                 .setNegativeButton("Cancel", null)
