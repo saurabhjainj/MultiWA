@@ -81,6 +81,10 @@ public abstract class WaActivity extends Activity {
             return false; // let WebView handle the tap normally (emoji, buttons, typing)
         });
 
+        // Keep this page's engine alive when the screen is off / app in background,
+        // so WhatsApp doesn't have to load again when you come back.
+        web.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false);
+
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
@@ -103,6 +107,16 @@ public abstract class WaActivity extends Activity {
                 if (host.endsWith("whatsapp.com") || host.endsWith("whatsapp.net")) return false;
                 // Other links (shared in chats) open in the normal browser.
                 try { startActivity(new Intent(Intent.ACTION_VIEW, u)); } catch (Exception ignored) {}
+                return true;
+            }
+
+            @Override
+            public boolean onRenderProcessGone(WebView v, android.webkit.RenderProcessGoneDetail d) {
+                // The system stopped the page engine (low memory). Don't crash: rebuild quietly.
+                ((android.view.ViewGroup) v.getParent()).removeView(v);
+                v.destroy();
+                web = null;
+                recreate();
                 return true;
             }
 
@@ -811,7 +825,7 @@ public abstract class WaActivity extends Activity {
     @Override
     protected void onSaveInstanceState(Bundle out) {
         super.onSaveInstanceState(out);
-        web.saveState(out);
+        if (web != null) web.saveState(out);
     }
 
     @Override
@@ -831,7 +845,7 @@ public abstract class WaActivity extends Activity {
     protected void onDestroy() {
         if (current == this) current = null;
         CookieManager.getInstance().flush();
-        web.destroy();
+        if (web != null) web.destroy();
         super.onDestroy();
     }
 }

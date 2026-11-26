@@ -187,17 +187,25 @@ public final class Extras {
             + "})();";
 
     // One panel at a time: chat list, or the open chat full-screen.
+    // Finds the real left column (chat list + Archived/Settings drawers) and the right column (open chat)
+    // ONCE, from WhatsApp's own two-column layout, then only switches which one is visible.
     private static final String MOBILE_JS =
-            "(function(){if(!window.__mwaMobile||window.__mwaMob)return;window.__mwaMob=1;"
+            "(function(){if(!window.__mwaMobile||window.__mwaMob)return;window.__mwaMob=1;var L=null,C=null;"
+            + "function find(){var s=document.getElementById('side');if(!s)return false;var l=s;"
+            + "while(l.parentElement&&l.parentElement!==document.body){var p=l.parentElement,pr=p.getBoundingClientRect(),lr=l.getBoundingClientRect();"
+            + "if(p.children.length>=2&&pr.width>=innerWidth*0.9&&lr.width>0&&lr.width<=pr.width*0.75){"
+            + "var right=[].some.call(p.children,function(k){if(k===l)return false;var r=k.getBoundingClientRect();return r.width>0&&r.left>=lr.right-2});"
+            + "if(right){L=l;C=p;return true}}l=p}return false}"
             + "setInterval(function(){try{"
             + "var m=document.querySelector('meta[name=viewport]');if(!m&&document.head){m=document.createElement('meta');m.name='viewport';document.head.appendChild(m)}"
             + "if(m&&m.content!=='width=640')m.content='width=640';"
-            + "var s=document.getElementById('side');if(!s)return;var l=s;"
-            + "while(l.parentElement&&!(l.parentElement.children.length>=2&&l.parentElement.getBoundingClientRect().width>=innerWidth*0.9))l=l.parentElement;"
-            + "var c=l.parentElement;if(!c)return;var o=!!document.getElementById('main');"
-            + "[].forEach.call(c.children,function(k){if(k===l){k.style.display=o?'none':'';k.style.maxWidth=o?'':'100%';k.style.flex=o?'':'1 1 100%';k.style.width=o?'':'100%'}"
-            + "else{k.style.display=o?'':'none';if(o){k.style.maxWidth='100%';k.style.flex='1 1 100%'}}})"
-            + "}catch(e){}},700)})();";
+            + "if(!L||!document.contains(L)||!document.contains(C)){"
+            + "if(C&&document.contains(C))[].forEach.call(C.children,function(k){k.style.display='';k.style.maxWidth='';k.style.flex='';k.style.width=''});"
+            + "L=null;C=null;if(!find())return}"
+            + "var o=!!document.getElementById('main');"
+            + "[].forEach.call(C.children,function(k){if(k===L){k.style.display=o?'none':'';k.style.maxWidth=o?'':'100%';k.style.flex=o?'':'1 1 100%';k.style.width=o?'':'100%'}"
+            + "else{k.style.display=o?'':'none';k.style.maxWidth=o?'100%':'';k.style.flex=o?'1 1 100%':'';k.style.width=o?'100%':''}})"
+            + "}catch(e){}},400)})();";
 
     private static final String DARK_JS =
             "(function(){try{if(!window.__mwaDark){if(localStorage.getItem('__mwaDark')==='1'){localStorage.setItem('theme','\"light\"');localStorage.removeItem('__mwaDark');document.body&&document.body.classList.remove('dark')}return}"
