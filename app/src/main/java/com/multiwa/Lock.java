@@ -46,7 +46,7 @@ final class Lock {
 
         BiometricPrompt.Builder b = new BiometricPrompt.Builder(a)
                 .setTitle("Multi WA unlock")
-                .setSubtitle("Fingerprint ya screen lock lagao");
+                .setSubtitle("Use fingerprint or screen lock");
         if (Build.VERSION.SDK_INT >= 30) {
             b.setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_WEAK
                     | BiometricManager.Authenticators.DEVICE_CREDENTIAL);

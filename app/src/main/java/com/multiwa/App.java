@@ -23,6 +23,7 @@ public class App extends Application {
                 NotificationManager.IMPORTANCE_MIN);
         bg.setShowBadge(false);
         nm.createNotificationChannel(bg);
+        nm.createNotificationChannel(new NotificationChannel("general", "General", NotificationManager.IMPORTANCE_DEFAULT));
     }
 
     /**

@@ -13,6 +13,7 @@ import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.webkit.CookieManager;
 import android.webkit.PermissionRequest;
@@ -64,10 +65,13 @@ public abstract class WaActivity extends Activity {
         };
         // Status bar in the account's colour, so you always know which number is open.
         getWindow().setStatusBarColor(MainActivity.darker(MainActivity.color(this, mySlot())));
-        FrameLayout frame = new FrameLayout(this);
-        frame.addView(web);
-        frame.addView(makeSwitchButton());
-        setContentView(frame);
+        // Top account bar (all accounts, one tap to switch) + WhatsApp below it.
+        page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.addView(makeTopBar(), new LinearLayout.LayoutParams(-1, -2));
+        page.addView(web, new LinearLayout.LayoutParams(-1, 0, 1));
+        setContentView(page);
+        placeBar();
 
         // Keyboard: always let the page take focus when the message box is tapped.
         web.setFocusable(true);
@@ -110,6 +114,7 @@ public abstract class WaActivity extends Activity {
                     pendingSendId = -1;
                 }
                 v.evaluateJavascript(NOTIFY_JS, null); // fallback if document-start injection unsupported
+                v.evaluateJavascript(Extras.settingsJs(WaActivity.this), null);
                 if (!visible) v.evaluateJavascript("window.__mwaSetBg&&__mwaSetBg(true)", null);
             }
         });
@@ -119,15 +124,29 @@ public abstract class WaActivity extends Activity {
             public void show(String title, String body) {
                 lastPreview = System.currentTimeMillis();
                 String all = (title + " " + body).toLowerCase();
-                if (all.contains("call") || all.contains("कॉल")) postCall(title, body);
-                else postMessage(title, body);
+                if (all.contains("call") || all.contains("कॉल")) { postCall(title, body); return; }
+                Extras.countToday(WaActivity.this, mySlot());
+                postMessage(title, body);
+                runOnUiThread(() -> maybeAutoReply(title, body));
             }
+
+            @android.webkit.JavascriptInterface
+            public void replied(boolean ok) {
+                runOnUiThread(() -> {
+                    if (ok) { if (!replyAuto) cancelMessage(); }
+                    else if (!replyAuto) Extras.simple(WaActivity.this, mySlot(),
+                            "Reply not sent", "Open the account to reply");
+                });
+            }
+
+            @android.webkit.JavascriptInterface
+            public void toast(String s) { WaActivity.this.toast(s); }
 
             @android.webkit.JavascriptInterface
             public void sent(String id, boolean ok) {
                 long sid = Long.parseLong(id);
                 org.json.JSONObject o = Sched.find(WaActivity.this, sid);
-                Sched.setStatus(WaActivity.this, sid, ok ? "sent" : "failed");
+                Sched.done(WaActivity.this, sid, ok);
                 Sched.notifyResult(WaActivity.this, mySlot(), ok, o == null ? "" : o.optString("phone"));
             }
 
@@ -148,6 +167,9 @@ public abstract class WaActivity extends Activity {
             androidx.webkit.WebViewCompat.addDocumentStartJavaScript(web, NOTIFY_JS,
                     java.util.Collections.singleton("https://web.whatsapp.com"));
         }
+
+        // Opened by "Connect all": connect, then step aside.
+        if (getIntent().getBooleanExtra("bg", false)) web.postDelayed(() -> moveTaskToBack(true), 5000);
 
         // Keep this account's process alive in background so messages keep arriving.
         startForegroundService(new Intent(this, KeepAlive.SERVICES[mySlot()]));
@@ -200,7 +222,7 @@ public abstract class WaActivity extends Activity {
                 r.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, "MultiWA/" + name);
                 r.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
                 getSystemService(android.app.DownloadManager.class).enqueue(r);
-                toast("Download shuru…");
+                toast("Download started…");
             }
         });
 
@@ -215,9 +237,10 @@ public abstract class WaActivity extends Activity {
         super.onNewIntent(intent);
         if (intent.getBooleanExtra("reset", false)) resetAccount();
         if (intent.getBooleanExtra("remove", false)) removeAccount();
+        if (intent.getBooleanExtra("bg", false)) web.postDelayed(() -> moveTaskToBack(true), 5000);
     }
 
-    /** "Account hatao": logout, stop background connection, close this slot. */
+    /** "Remove account": logout, stop background connection, close this slot. */
     private void removeAccount() {
         resetAccount();
         stopService(new Intent(this, KeepAlive.SERVICES[mySlot()]));
@@ -235,7 +258,7 @@ public abstract class WaActivity extends Activity {
         getSharedPreferences("names", MODE_MULTI_PROCESS).edit().putInt("u" + mySlot(), 0).apply();
         cancelMessage();
         web.loadUrl("https://web.whatsapp.com/");
-        toast(slotName(this, mySlot()) + " reset ho gaya. Naya QR scan karo.");
+        toast(slotName(this, mySlot()) + " was reset. Scan a new QR code.");
     }
 
     /** Save a base64 "data:" URL into Downloads/MultiWA. */
@@ -260,7 +283,7 @@ public abstract class WaActivity extends Activity {
             out.close();
             toast("Saved: Downloads/MultiWA/" + name);
         } catch (Exception e) {
-            toast("Save nahi ho paaya");
+            toast("Couldn't save the file");
         }
     }
 
@@ -316,15 +339,18 @@ public abstract class WaActivity extends Activity {
         if (n == lastUnread) return;
         int prev = lastUnread;
         lastUnread = n;
-        getSharedPreferences("names", MODE_MULTI_PROCESS).edit().putInt("u" + mySlot(), n).apply();
+        getSharedPreferences("names", MODE_MULTI_PROCESS).edit().putInt("u" + mySlot(), n).commit();
+        Extras.updateWidget(this);
         if (n == 0) { cancelMessage(); return; }
         // Ignore old unread chats counted while the page is first loading.
         if (n > prev && System.currentTimeMillis() - pageLoadedAt > 25000) {
             long t = System.currentTimeMillis();
             web.postDelayed(() -> {
                 // Skip if WhatsApp's own notification (with sender + text) already came.
-                if (lastPreview < t - 4000 && lastUnread > 0)
+                if (lastPreview < t - 4000 && lastUnread > 0) {
+                    Extras.countToday(this, mySlot());
                     postMessage("New message", lastUnread + (lastUnread == 1 ? " unread chat" : " unread chats"));
+                }
             }, 2500);
         }
     }
@@ -337,8 +363,171 @@ public abstract class WaActivity extends Activity {
     /** Recent messages for this account, shown stacked like a chat in one notification. */
     private final java.util.ArrayList<String[]> history = new java.util.ArrayList<>();
 
+    private volatile boolean replyAuto;
+    private final java.util.Map<String, Long> autoSent = new java.util.HashMap<>();
+
+    /** Reply to a chat by its name (used by notification reply and auto-reply). */
+    void replyTo(String who, String text, boolean auto) {
+        replyAuto = auto;
+        web.evaluateJavascript(Extras.replyJs(who, text), null);
+    }
+
+    /** Auto-reply once per person every 6 hours, never in groups, never while you're looking. */
+    private void maybeAutoReply(String sender, String body) {
+        int s = mySlot();
+        if (visible || !Extras.arActiveNow(this, s) || sender == null || sender.isEmpty()) return;
+        if (body != null && body.matches("^[^:]{1,40}: [\\s\\S]*")) return; // looks like a group message
+        Long last = autoSent.get(sender);
+        if (last != null && System.currentTimeMillis() - last < 6 * 3600_000L) return;
+        autoSent.put(sender, System.currentTimeMillis());
+        web.postDelayed(() -> replyTo(sender, Extras.arMsg(this, s), true), 3000);
+    }
+
+    // ---------- Top account bar ----------
+    private LinearLayout page, topBar, barSlots;
+    private boolean barAtBottom;
+
+    /** Put the bar at the top or bottom, as chosen in settings. */
+    private void placeBar() {
+        boolean bottom = Extras.barBottom(this);
+        if (page == null || (bottom == barAtBottom && page.indexOfChild(topBar) == (bottom ? 1 : 0))) return;
+        barAtBottom = bottom;
+        page.removeView(topBar);
+        page.addView(topBar, bottom ? 1 : 0, new LinearLayout.LayoutParams(-1, -2));
+    }
+    private TextView barName;
+    private final android.os.Handler barHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable barTick = new Runnable() {
+        @Override public void run() { fillBar(); barHandler.postDelayed(this, 3000); }
+    };
+
+    private int dpx(float v) { return (int) (v * getResources().getDisplayMetrics().density); }
+
+    private View makeTopBar() {
+        topBar = new LinearLayout(this);
+        topBar.setGravity(Gravity.CENTER_VERTICAL);
+        topBar.setPadding(dpx(6), dpx(4), dpx(4), dpx(4));
+
+        android.widget.HorizontalScrollView hs = new android.widget.HorizontalScrollView(this);
+        hs.setHorizontalScrollBarEnabled(false);
+        barSlots = new LinearLayout(this);
+        barSlots.setGravity(Gravity.CENTER_VERTICAL);
+        hs.addView(barSlots);
+        topBar.addView(hs, new LinearLayout.LayoutParams(0, -2, 1));
+
+        barName = new TextView(this);
+        barName.setTextColor(Color.WHITE);
+        barName.setTextSize(13);
+        barName.setSingleLine(true);
+        barName.setMaxWidth(dpx(110));
+        barName.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        barName.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
+        barName.setPadding(dpx(6), 0, dpx(4), 0);
+        topBar.addView(barName);
+
+        topBar.addView(barIcon("⌂", v -> {
+            startActivity(new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            overridePendingTransition(0, 0);
+        }));
+        TextView more = barIcon("⋮", v -> showSwitcher()); // quick reply, reload, home
+        more.setOnLongClickListener(v -> { Extras.showBarSettings(this, () -> { placeBar(); fillBar(); }); return true; });
+        topBar.addView(more);
+        fillBar();
+        return topBar;
+    }
+
+    private TextView barIcon(String s, View.OnClickListener l) {
+        TextView t = new TextView(this);
+        t.setText(s);
+        t.setTextSize(21);
+        t.setTextColor(Color.WHITE);
+        t.setGravity(Gravity.CENTER);
+        t.setMinWidth(dpx(38));
+        t.setPadding(0, dpx(4), 0, dpx(4));
+        t.setOnClickListener(l);
+        return t;
+    }
+
+    /** (Re)draw the account circles with unread badges. */
+    private void fillBar() {
+        if (barSlots == null) return;
+        int me = mySlot();
+        int myColor = MainActivity.color(this, me);
+        int sz = Extras.barSize(this);
+        int avDp = new int[]{28, 36, 44}[sz], cellDp = new int[]{36, 46, 56}[sz], txt = new int[]{12, 15, 18}[sz];
+        topBar.setBackgroundColor(MainActivity.darker(myColor));
+        barName.setText(slotName(this, me));
+        barName.setTextSize(new int[]{11, 13, 15}[sz]);
+        barName.setVisibility(Extras.barShowName(this) ? View.VISIBLE : View.GONE);
+        barSlots.removeAllViews();
+        android.content.SharedPreferences p = getSharedPreferences("names", MODE_MULTI_PROCESS);
+        for (int i : MainActivity.activeSlots(this)) {
+            String name = slotName(this, i);
+            int c = MainActivity.color(this, i);
+            FrameLayout cell = new FrameLayout(this);
+
+            TextView av = new TextView(this);
+            av.setText(name.isEmpty() ? "?" : name.substring(0, 1).toUpperCase());
+            av.setTextColor(Color.WHITE);
+            av.setTextSize(txt);
+            av.setGravity(Gravity.CENTER);
+            av.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
+            GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{c, MainActivity.darker(c)});
+            g.setShape(GradientDrawable.OVAL);
+            if (i == me) g.setStroke(dpx(3), Color.WHITE); else av.setAlpha(0.75f);
+            av.setBackground(g);
+            cell.addView(av, new FrameLayout.LayoutParams(dpx(avDp), dpx(avDp), Gravity.CENTER));
+
+            int u = p.getInt("u" + i, 0);
+            if (u > 0 && i != me) {
+                TextView b = new TextView(this);
+                b.setText(u > 99 ? "99+" : String.valueOf(u));
+                b.setTextColor(Color.WHITE);
+                b.setTextSize(9);
+                b.setGravity(Gravity.CENTER);
+                b.setPadding(dpx(4), 0, dpx(4), 0);
+                b.setMinWidth(dpx(16));
+                GradientDrawable bb = new GradientDrawable();
+                bb.setCornerRadius(dpx(8));
+                bb.setColor(0xFFFF3B30);
+                bb.setStroke(dpx(1), MainActivity.darker(myColor));
+                b.setBackground(bb);
+                cell.addView(b, new FrameLayout.LayoutParams(-2, dpx(16), Gravity.TOP | Gravity.END));
+            }
+
+            cell.setOnClickListener(v -> {
+                if (i == me) return;
+                startActivity(new Intent(this, SLOTS[i]).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                overridePendingTransition(0, 0);
+            });
+            cell.setOnLongClickListener(v -> { toast(name); return true; });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dpx(cellDp), dpx(cellDp));
+            lp.rightMargin = dpx(2);
+            barSlots.addView(cell, lp);
+        }
+    }
+
+    /** Swipe the ⇄ button left/right: next/previous account. */
+    private void switchBy(int d) {
+        java.util.List<Integer> shown = MainActivity.activeSlots(this);
+        int idx = shown.indexOf(mySlot());
+        if (shown.size() < 2 || idx < 0) return;
+        int next = shown.get((idx + d + shown.size()) % shown.size());
+        startActivity(new Intent(this, SLOTS[next]).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        overridePendingTransition(d > 0 ? android.R.anim.slide_in_left : android.R.anim.fade_in, android.R.anim.fade_out);
+    }
+
+    private void showQuickReplies() {
+        java.util.List<String> l = Extras.quick(this);
+        if (l.isEmpty()) { toast("Add quick replies in Settings"); return; }
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("⚡ Quick reply")
+                .setItems(l.toArray(new String[0]), (d, w) -> web.evaluateJavascript(Extras.insertJs(l.get(w)), null))
+                .show();
+    }
+
     private void postMessage(String sender, String body) {
-        if (visible) return; // already looking at this account
+        if (visible || Extras.muted(this, mySlot())) return; // looking at it, or muted
         int s = mySlot();
         int color = MainActivity.color(this, s);
         String name = slotName(this, s);
@@ -364,7 +553,7 @@ public abstract class WaActivity extends Activity {
         android.text.SpannableStringBuilder one = new android.text.SpannableStringBuilder();
         appendLine(one, last[0], last[1]);
         android.graphics.Bitmap av = avatar(name, color);
-        String label = name + (msgs.size() > 1 ? "  ·  " + msgs.size() + " naye messages" : "");
+        String label = name + (msgs.size() > 1 ? "  ·  " + msgs.size() + " new messages" : "");
 
         android.app.Notification n = new android.app.Notification.Builder(this, "msg_" + s)
                 .setSmallIcon(R.drawable.ic_stat)
@@ -382,14 +571,19 @@ public abstract class WaActivity extends Activity {
                 .setAutoCancel(true)
                 .setContentIntent(pi)
                 .addAction(new android.app.Notification.Action.Builder(
-                        (android.graphics.drawable.Icon) null, "➜ " + name + " kholo", pi).build())
+                        (android.graphics.drawable.Icon) null, "➜ Open " + name, pi).build())
                 .build();
+        if (!"New message".equals(last[0])) {
+            // Rebuild with an inline "↩ Reply" box for the last sender.
+            n = android.app.Notification.Builder.recoverBuilder(this, n)
+                    .addAction(Extras.replyAction(this, s, last[0])).build();
+        }
         getSystemService(android.app.NotificationManager.class).notify(10 + s, n);
     }
 
     /** Incoming call: rings with ringtone and shows which account is being called. */
     private void postCall(String caller, String body) {
-        if (visible) return;
+        if (visible || Extras.muted(this, mySlot())) return;
         int s = mySlot();
         int color = MainActivity.color(this, s);
         String name = slotName(this, s);
@@ -397,12 +591,12 @@ public abstract class WaActivity extends Activity {
         android.app.PendingIntent pi = android.app.PendingIntent.getActivity(this, 50 + s, open,
                 android.app.PendingIntent.FLAG_IMMUTABLE | android.app.PendingIntent.FLAG_UPDATE_CURRENT);
         android.text.SpannableStringBuilder callText = new android.text.SpannableStringBuilder();
-        appendLine(callText, caller, "call kar rahe hain");
+        appendLine(callText, caller, "is calling");
         android.app.Notification n = new android.app.Notification.Builder(this, "call_" + s)
                 .setSmallIcon(R.drawable.ic_stat)
                 .setStyle(new android.app.Notification.DecoratedCustomViewStyle())
                 .setCustomContentView(card("📞 " + name + "  ·  call", color, avatar(name, color), callText, 2))
-                .setContentTitle("📞 " + name + " pe call aa rahi hai")
+                .setContentTitle("📞 " + name + ": incoming call")
                 .setContentText(caller + (body.isEmpty() ? "" : " · " + body))
                 .setSubText(name)
                 .setColor(color)
@@ -411,7 +605,7 @@ public abstract class WaActivity extends Activity {
                 .setTimeoutAfter(45000)
                 .setContentIntent(pi)
                 .addAction(new android.app.Notification.Action.Builder(
-                        (android.graphics.drawable.Icon) null, "📞 " + name + " kholo", pi).build())
+                        (android.graphics.drawable.Icon) null, "📞 Open " + name, pi).build())
                 .build();
         n.flags |= android.app.Notification.FLAG_INSISTENT; // keep ringing until seen
         getSystemService(android.app.NotificationManager.class).notify(60 + s, n);
@@ -476,12 +670,15 @@ public abstract class WaActivity extends Activity {
         int c = MainActivity.color(this, mySlot());
         getWindow().setStatusBarColor(MainActivity.darker(c));
         if (switchBg != null) switchBg.setColor((c & 0x00FFFFFF) | 0xE6000000);
+        placeBar();
+        barHandler.post(barTick); // refresh account bar (names, colours, unread, size)
     }
 
     @Override
     protected void onPause() {
         super.onPause();
         visible = false;
+        barHandler.removeCallbacks(barTick);
         Lock.touch(this);
         if (web != null) web.evaluateJavascript("window.__mwaSetBg&&__mwaSetBg(true)", null);
     }
@@ -518,19 +715,22 @@ public abstract class WaActivity extends Activity {
         lp.rightMargin = d / 5;
         b.setLayoutParams(lp);
 
-        final float[] start = new float[2];
+        final float[] start = new float[3];
         final boolean[] moved = {false};
+        final float dens = getResources().getDisplayMetrics().density;
         b.setOnTouchListener((v, e) -> {
             switch (e.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
-                    start[0] = e.getRawY(); start[1] = v.getTranslationY(); moved[0] = false;
+                    start[0] = e.getRawY(); start[1] = v.getTranslationY(); start[2] = e.getRawX(); moved[0] = false;
                     return true;
                 case MotionEvent.ACTION_MOVE:
                     float dy = e.getRawY() - start[0];
-                    if (Math.abs(dy) > 15) moved[0] = true;
-                    v.setTranslationY(start[1] + dy);
+                    float dxm = e.getRawX() - start[2];
+                    if (Math.abs(dy) > 15 && Math.abs(dy) > Math.abs(dxm)) { moved[0] = true; v.setTranslationY(start[1] + dy); }
                     return true;
                 case MotionEvent.ACTION_UP:
+                    float dx = e.getRawX() - start[2];
+                    if (!moved[0] && Math.abs(dx) > 50 * dens) { switchBy(dx < 0 ? 1 : -1); return true; }
                     if (!moved[0]) showSwitcher();
                     return true;
             }
@@ -543,7 +743,7 @@ public abstract class WaActivity extends Activity {
         int me = mySlot();
         java.util.List<Integer> shown = MainActivity.activeSlots(this);
         int k = shown.size();
-        CharSequence[] items = new CharSequence[k + 2];
+        CharSequence[] items = new CharSequence[k + 3];
         for (int j = 0; j < k; j++) {
             int i = shown.get(j);
             String label = "●  " + slotName(this, i) + (i == me ? "   ✓" : "");
@@ -551,13 +751,15 @@ public abstract class WaActivity extends Activity {
             s.setSpan(new android.text.style.ForegroundColorSpan(MainActivity.color(this, i)), 0, 1, 0);
             items[j] = s;
         }
-        items[k] = "🔄  Reload";
-        items[k + 1] = "⌂  Home screen";
+        items[k] = "⚡  Quick reply";
+        items[k + 1] = "🔄  Reload";
+        items[k + 2] = "⌂  Home screen";
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle("Switch WhatsApp")
                 .setItems(items, (dlg, which) -> {
                     if (which < k && shown.get(which) == me) return;
-                    if (which == k) { web.reload(); toast("Reload ho raha hai…"); return; }
+                    if (which == k) { showQuickReplies(); return; }
+                    if (which == k + 1) { web.reload(); toast("Reloading…"); return; }
                     Class<?> target = which < k ? SLOTS[shown.get(which)] : MainActivity.class;
                     Intent it = new Intent(this, target);
                     it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -614,6 +816,13 @@ public abstract class WaActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        if (Extras.mobile(this)) {
+            // Mobile layout: Back closes the open chat first (like the real app).
+            web.evaluateJavascript("(function(){if(document.getElementById('main')){"
+                    + "document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',keyCode:27,which:27,bubbles:true}));return 1}return 0})()",
+                    r -> { if (!"1".equals(r)) moveTaskToBack(true); });
+            return;
+        }
         if (web.canGoBack()) web.goBack();
         else moveTaskToBack(true); // keep session alive instead of closing
     }

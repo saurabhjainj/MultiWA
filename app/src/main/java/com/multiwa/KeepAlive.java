@@ -35,7 +35,7 @@ public abstract class KeepAlive extends Service {
         Notification n = new Notification.Builder(this, App.CH_BG)
                 .setSmallIcon(R.drawable.ic_stat)
                 .setContentTitle("🟢 " + WaActivity.slotName(this, s) + " · online")
-                .setContentText("Naye messages aate hi bata dunga")
+                .setContentText("You'll be notified of new messages")
                 .setLargeIcon(WaActivity.avatar(WaActivity.slotName(this, s), MainActivity.color(this, s)))
                 .setColor(MainActivity.color(this, s))
                 .setGroup("bg")

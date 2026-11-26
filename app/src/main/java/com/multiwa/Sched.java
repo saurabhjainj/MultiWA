@@ -28,7 +28,7 @@ public final class Sched {
                 w.runOnUiThread(() -> w.sendScheduled(id, o.optString("phone"), o.optString("text")));
             } else {
                 // Account not open/connected right now.
-                setStatus(c, id, "failed");
+                done(c, id, false);
                 notifyResult(c, o.optInt("slot"), false, o.optString("phone"));
             }
         }
@@ -75,20 +75,72 @@ public final class Sched {
         saveAll(c, a);
     }
 
-    static synchronized void add(Context c, int slot, String phone, String text, long when) {
+    static synchronized void add(Context c, int slot, String phone, String text, long when, String name) {
+        add(c, slot, phone, text, when, name, "none");
+    }
+
+    /** repeat: none | daily | weekly | monthly */
+    static synchronized void add(Context c, int slot, String phone, String text, long when, String name, String repeat) {
         try {
             JSONObject o = new JSONObject();
-            o.put("id", System.currentTimeMillis());
+            o.put("repeat", repeat);
+            o.put("name", name == null ? "" : name);
             o.put("slot", slot);
             o.put("phone", phone);
             o.put("text", text);
             o.put("when", when);
             o.put("status", "pending");
+            o.put("id", System.currentTimeMillis() + (long) (Math.random() * 1000));
             JSONArray a = all(c);
             a.put(o);
             saveAll(c, a);
             arm(c, o);
         } catch (Exception ignored) {}
+    }
+
+    /** After sending: repeating ones move to their next time, others are marked sent/failed. */
+    static synchronized void done(Context c, long id, boolean ok) {
+        JSONArray a = all(c);
+        try {
+            for (int i = 0; i < a.length(); i++) {
+                JSONObject o = a.getJSONObject(i);
+                if (o.optLong("id") != id) continue;
+                String rep = o.optString("repeat", "none");
+                o.put("last", ok ? "sent" : "failed");
+                if ("none".equals(rep)) { o.put("status", ok ? "sent" : "failed"); }
+                else { o.put("when", next(o.optLong("when"), rep)); o.put("status", "pending"); arm(c, o); }
+            }
+        } catch (Exception ignored) {}
+        saveAll(c, a);
+    }
+
+    private static long next(long when, String rep) {
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        cal.setTimeInMillis(when);
+        do {
+            if ("daily".equals(rep)) cal.add(java.util.Calendar.DAY_OF_MONTH, 1);
+            else if ("weekly".equals(rep)) cal.add(java.util.Calendar.WEEK_OF_YEAR, 1);
+            else cal.add(java.util.Calendar.MONTH, 1);
+        } while (cal.getTimeInMillis() < System.currentTimeMillis());
+        return cal.getTimeInMillis();
+    }
+
+    /** After phone restart: alarms are lost, set them again. Missed one-time ones are marked failed. */
+    static synchronized void rearmAll(Context c) {
+        JSONArray a = all(c);
+        try {
+            for (int i = 0; i < a.length(); i++) {
+                JSONObject o = a.getJSONObject(i);
+                if (!"pending".equals(o.optString("status"))) continue;
+                if (o.optLong("when") < System.currentTimeMillis()) {
+                    String rep = o.optString("repeat", "none");
+                    if ("none".equals(rep)) { o.put("status", "failed"); continue; }
+                    o.put("when", next(o.optLong("when"), rep));
+                }
+                arm(c, o);
+            }
+        } catch (Exception ignored) {}
+        saveAll(c, a);
     }
 
     static synchronized void remove(Context c, long id) {
@@ -122,8 +174,8 @@ public final class Sched {
         Notification n = new Notification.Builder(c, "msg_" + slot)
                 .setSmallIcon(R.drawable.ic_stat)
                 .setColor(MainActivity.color(c, slot))
-                .setContentTitle(ok ? "⏰ Scheduled message bhej diya" : "⏰ Scheduled message nahi gaya")
-                .setContentText(name + " → +" + phone + (ok ? "" : " · account khula/connected nahi tha"))
+                .setContentTitle(ok ? "⏰ Scheduled message sent" : "⏰ Scheduled message not sent")
+                .setContentText(name + " → +" + phone + (ok ? "" : " · account wasn't open/connected"))
                 .setAutoCancel(true)
                 .build();
         c.getSystemService(NotificationManager.class).notify((int) (System.currentTimeMillis() % 100000) + 1000, n);

@@ -12,6 +12,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
 
     <application
@@ -136,5 +137,33 @@
         <receiver android:name=".Sched$R8" android:process=":wa8" android:exported="false" />
         <receiver android:name=".Sched$R9" android:process=":wa9" android:exported="false" />
         <receiver android:name=".Sched$R10" android:process=":wa10" android:exported="false" />
+        <activity android:name=".SettingsActivity" android:exported="false" />
+
+        <!-- Reply from notification, delivered into each account's process -->
+        <receiver android:name=".Extras$Q1" android:process=":wa1" android:exported="false" />
+        <receiver android:name=".Extras$Q2" android:process=":wa2" android:exported="false" />
+        <receiver android:name=".Extras$Q3" android:process=":wa3" android:exported="false" />
+        <receiver android:name=".Extras$Q4" android:process=":wa4" android:exported="false" />
+        <receiver android:name=".Extras$Q5" android:process=":wa5" android:exported="false" />
+        <receiver android:name=".Extras$Q6" android:process=":wa6" android:exported="false" />
+        <receiver android:name=".Extras$Q7" android:process=":wa7" android:exported="false" />
+        <receiver android:name=".Extras$Q8" android:process=":wa8" android:exported="false" />
+        <receiver android:name=".Extras$Q9" android:process=":wa9" android:exported="false" />
+        <receiver android:name=".Extras$Q10" android:process=":wa10" android:exported="false" />
+
+        <!-- Phone restart: re-arm schedules + "connect all" notification -->
+        <receiver android:name=".Extras$Boot" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Home screen widget -->
+        <receiver android:name=".Extras$Widget" android:exported="true" android:label="Multi WA">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info" />
+        </receiver>
     </application>
 </manifest>
