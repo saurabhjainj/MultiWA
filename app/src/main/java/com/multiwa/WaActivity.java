@@ -157,6 +157,13 @@ public abstract class WaActivity extends Activity {
             public void toast(String s) { WaActivity.this.toast(s); }
 
             @android.webkit.JavascriptInterface
+            public void copy(String text) {
+                android.content.ClipboardManager cm = getSystemService(android.content.ClipboardManager.class);
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("MultiWA layout", text));
+                WaActivity.this.toast("Layout info copied. Paste it in your chat with Claude.");
+            }
+
+            @android.webkit.JavascriptInterface
             public void sent(String id, boolean ok) {
                 long sid = Long.parseLong(id);
                 org.json.JSONObject o = Sched.find(WaActivity.this, sid);
@@ -757,7 +764,7 @@ public abstract class WaActivity extends Activity {
         int me = mySlot();
         java.util.List<Integer> shown = MainActivity.activeSlots(this);
         int k = shown.size();
-        CharSequence[] items = new CharSequence[k + 3];
+        CharSequence[] items = new CharSequence[k + 4];
         for (int j = 0; j < k; j++) {
             int i = shown.get(j);
             String label = "●  " + slotName(this, i) + (i == me ? "   ✓" : "");
@@ -767,13 +774,15 @@ public abstract class WaActivity extends Activity {
         }
         items[k] = "⚡  Quick reply";
         items[k + 1] = "🔄  Reload";
-        items[k + 2] = "⌂  Home screen";
+        items[k + 2] = "🛠  Copy layout info (for fixing)";
+        items[k + 3] = "⌂  Home screen";
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle("Switch WhatsApp")
                 .setItems(items, (dlg, which) -> {
                     if (which < k && shown.get(which) == me) return;
                     if (which == k) { showQuickReplies(); return; }
                     if (which == k + 1) { web.reload(); toast("Reloading…"); return; }
+                    if (which == k + 2) { web.evaluateJavascript(Extras.DIAG_JS, null); return; }
                     Class<?> target = which < k ? SLOTS[shown.get(which)] : MainActivity.class;
                     Intent it = new Intent(this, target);
                     it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);

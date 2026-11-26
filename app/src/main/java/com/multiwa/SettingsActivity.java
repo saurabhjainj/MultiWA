@@ -61,6 +61,9 @@ public class SettingsActivity extends Activity {
         row("📱", "Mobile layout: " + (Extras.mobile(this) ? "ON" : "OFF"), "One chat per screen, bigger text", () -> {
             prefs.edit().putBoolean("mobile", !Extras.mobile(this)).commit(); build();
         });
+        row("📐", "Page size: " + Extras.PAGE_SIZES[Extras.pageSize(this)], "Mobile layout text size (tap to change)", () -> {
+            prefs.edit().putInt("page_size", (Extras.pageSize(this) + 1) % Extras.PAGE_SIZES.length).commit(); build();
+        });
         row("🌙", "Dark mode: " + (Extras.dark(this) ? "ON" : "OFF"), "All accounts dark", () -> {
             prefs.edit().putBoolean("dark", !Extras.dark(this)).commit(); build();
         });

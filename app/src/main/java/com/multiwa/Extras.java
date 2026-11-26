@@ -71,8 +71,13 @@ public final class Extras {
     }
 
     // ---------- Settings ----------
-    static boolean mobile(Context c) { return p(c).getBoolean("mobile", true); }
+    static boolean mobile(Context c) { return p(c).getBoolean("mobile", false); }
     static boolean dark(Context c) { return p(c).getBoolean("dark", false); }
+
+    /** Page size in mobile layout: 0 = Large (real phone width), 1 = Medium, 2 = Small. */
+    static final String[] PAGE_SIZES = {"Large", "Medium", "Small"};
+    private static final String[] PAGE_VW = {"device-width", "520", "640"};
+    static int pageSize(Context c) { return p(c).getInt("page_size", 0); }
 
     // ---------- Account bar (adjustable) ----------
     static final String[] BAR_SIZES = {"Small", "Medium", "Large"};
@@ -157,7 +162,8 @@ public final class Extras {
 
     /** Mobile layout + dark mode, depending on settings. */
     static String settingsJs(Context c) {
-        return "window.__mwaMobile=" + mobile(c) + ";window.__mwaDark=" + dark(c) + ";" + MOBILE_JS + DARK_JS + MENU_JS;
+        return "window.__mwaMobile=" + mobile(c) + ";window.__mwaDark=" + dark(c)
+                + ";window.__mwaVW='" + PAGE_VW[pageSize(c)] + "';" + MOBILE_JS + DARK_JS + MENU_JS;
     }
 
     // Message options menu (Reply, Copy, Forward…): open with long-press, and keep it fully on screen.
@@ -186,6 +192,21 @@ public final class Extras {
             + ".observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['style']});"
             + "})();";
 
+    /** Page structure only (sizes, ids, roles) - no names or messages. Used to fix the mobile layout. */
+    static final String DIAG_JS =
+            "(function(){function d(e){if(!e)return 'null';var r=e.getBoundingClientRect();"
+            + "return e.tagName.toLowerCase()+(e.id?'#'+e.id:'')+(e.getAttribute('role')?'[role='+e.getAttribute('role')+']':'')"
+            + "+(e.getAttribute('data-testid')?'[tid='+e.getAttribute('data-testid')+']':'')"
+            + "+' w='+Math.round(r.width)+' h='+Math.round(r.height)+' x='+Math.round(r.left)+' kids='+e.children.length"
+            + "+' disp='+getComputedStyle(e).display+(e.style.display?' inl='+e.style.display:'')}"
+            + "var mt=document.querySelector('meta[name=viewport]');"
+            + "var out=['MultiWA layout v1','vw='+innerWidth+' vh='+innerHeight+' dpr='+devicePixelRatio+' main='+!!document.getElementById('main')+' meta='+(mt?mt.content:'none')+' mobile='+window.__mwaMobile];"
+            + "var e=document.getElementById('side'),l=0;while(e&&e!==document.body&&l<16){out.push('S'+l+': '+d(e));"
+            + "if(e.parentElement&&e.parentElement.children.length<8)[].forEach.call(e.parentElement.children,function(k,i){if(k!==e)out.push('    sib'+i+': '+d(k))});"
+            + "e=e.parentElement;l++}"
+            + "e=document.getElementById('main');l=0;while(e&&e!==document.body&&l<12){out.push('M'+l+': '+d(e));e=e.parentElement;l++}"
+            + "MWA.copy(out.join('\\n'))})()";
+
     // One panel at a time: chat list, or the open chat full-screen.
     // Finds the real left column (chat list + Archived/Settings drawers) and the right column (open chat)
     // ONCE, from WhatsApp's own two-column layout, then only switches which one is visible.
@@ -198,13 +219,21 @@ public final class Extras {
             + "if(right){L=l;C=p;return true}}l=p}return false}"
             + "setInterval(function(){try{"
             + "var m=document.querySelector('meta[name=viewport]');if(!m&&document.head){m=document.createElement('meta');m.name='viewport';document.head.appendChild(m)}"
-            + "if(m&&m.content!=='width=640')m.content='width=640';"
+            + "var vw=window.__mwaVW||'device-width';var want=vw==='device-width'?'width=device-width, initial-scale=1':'width='+vw;"
+            + "if(m&&m.content!==want)m.content=want;"
             + "if(!L||!document.contains(L)||!document.contains(C)){"
             + "if(C&&document.contains(C))[].forEach.call(C.children,function(k){k.style.display='';k.style.maxWidth='';k.style.flex='';k.style.width=''});"
             + "L=null;C=null;if(!find())return}"
             + "var o=!!document.getElementById('main');"
-            + "[].forEach.call(C.children,function(k){if(k===L){k.style.display=o?'none':'';k.style.maxWidth=o?'':'100%';k.style.flex=o?'':'1 1 100%';k.style.width=o?'':'100%'}"
-            + "else{k.style.display=o?'':'none';k.style.maxWidth=o?'100%':'';k.style.flex=o?'1 1 100%':'';k.style.width=o?'100%':''}})"
+            // WhatsApp sets minimum widths for desktop; clear them along the panel chains so nothing overflows
+            + "function free(el){while(el&&el!==document.body){if(el.style.minWidth!=='0px')el.style.minWidth='0';el=el.parentElement}}"
+            + "free(document.getElementById('side'));free(document.getElementById('main'));"
+            // Show exactly one panel full-screen: chat list / open chat / side panel (contact info, search, media)
+            + "var mn=document.getElementById('main'),M=null,D=null;"
+            + "[].forEach.call(C.children,function(k){if(k===L)return;if(mn&&k.contains(mn))M=k;else if(k.querySelector('header')&&k.textContent.trim().length>0)D=k});"
+            + "var show=!o?L:(D||M||L);"
+            + "[].forEach.call(C.children,function(k){var on=(k===show);k.style.display=on?'':'none';"
+            + "k.style.maxWidth=on?'100%':'';k.style.flex=on?'1 1 100%':'';k.style.width=on?'100%':''})"
             + "}catch(e){}},400)})();";
 
     private static final String DARK_JS =
@@ -280,6 +309,10 @@ public final class Extras {
 
     private static final int[] W_IDS = { R.id.w0, R.id.w1, R.id.w2, R.id.w3, R.id.w4,
             R.id.w5, R.id.w6, R.id.w7, R.id.w8, R.id.w9 };
+    private static final int[] N_IDS = { R.id.n0, R.id.n1, R.id.n2, R.id.n3, R.id.n4,
+            R.id.n5, R.id.n6, R.id.n7, R.id.n8, R.id.n9 };
+    private static final int[] C_IDS = { R.id.c0, R.id.c1, R.id.c2, R.id.c3, R.id.c4,
+            R.id.c5, R.id.c6, R.id.c7, R.id.c8, R.id.c9 };
 
     static void updateWidget(Context c) {
         try {
@@ -288,18 +321,34 @@ public final class Extras {
             if (ids == null || ids.length == 0) return;
             RemoteViews rv = new RemoteViews(c.getPackageName(), R.layout.widget_multi);
             List<Integer> slots = MainActivity.activeSlots(c);
-            for (int k = 0; k < W_IDS.length; k++) {
+
+            // Header: your title, total unread, home button
+            int total = 0;
+            for (int s : slots) total += p(c).getInt("u" + s, 0);
+            rv.setTextViewText(R.id.wtitle, p(c).getString("title", "Inbox HQ"));
+            rv.setTextViewText(R.id.wunread, total > 0 ? total + " unread" : "✓ All read");
+            rv.setInt(R.id.wunread, "setBackgroundResource", total > 0 ? R.drawable.widget_pill : R.drawable.widget_pill_ok);
+            PendingIntent home = PendingIntent.getActivity(c, 199,
+                    new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+            rv.setOnClickPendingIntent(R.id.wopen, home);
+            rv.setOnClickPendingIntent(R.id.wtitle, home);
+
+            // Accounts: circle + name, tap to open
+            for (int k = 0; k < C_IDS.length; k++) {
                 if (k < slots.size()) {
                     int s = slots.get(k);
-                    Bitmap av = badged(WaActivity.avatar(WaActivity.slotName(c, s), MainActivity.color(c, s)),
-                            p(c).getInt("u" + s, 0));
-                    rv.setImageViewBitmap(W_IDS[k], av);
-                    rv.setViewVisibility(W_IDS[k], View.VISIBLE);
+                    String name = WaActivity.slotName(c, s);
+                    rv.setImageViewBitmap(W_IDS[k], badged(WaActivity.avatar(name, MainActivity.color(c, s)),
+                            p(c).getInt("u" + s, 0), MainActivity.color(c, s)));
+                    rv.setTextViewText(N_IDS[k], name + (muted(c, s) ? " 🔕" : ""));
+                    rv.setViewVisibility(C_IDS[k], View.VISIBLE);
                     Intent open = new Intent(c, WaActivity.SLOTS[s]).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    rv.setOnClickPendingIntent(W_IDS[k], PendingIntent.getActivity(c, 200 + s, open,
+                    rv.setOnClickPendingIntent(C_IDS[k], PendingIntent.getActivity(c, 200 + s, open,
                             PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
                 } else {
-                    rv.setViewVisibility(W_IDS[k], k < 5 ? View.INVISIBLE : View.GONE);
+                    // keep the first row evenly spaced; hide unused second-row cells
+                    rv.setViewVisibility(C_IDS[k], k < 5 ? View.INVISIBLE : View.GONE);
                 }
             }
             rv.setViewVisibility(R.id.row2, slots.size() > 5 ? View.VISIBLE : View.GONE);
@@ -307,17 +356,29 @@ public final class Extras {
         } catch (Exception ignored) {}
     }
 
-    /** Avatar with a red unread count in the corner. */
-    static Bitmap badged(Bitmap src, int n) {
+    /** Avatar with a glowing ring (when unread) and a red count in the corner. */
+    static Bitmap badged(Bitmap src, int n, int color) {
         Bitmap b = Bitmap.createBitmap(160, 160, Bitmap.Config.ARGB_8888);
         Canvas cv = new Canvas(b);
-        cv.drawBitmap(src, null, new android.graphics.RectF(16, 16, 144, 144), null);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         if (n > 0) {
-            Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-            p.setColor(0xFFFF3B30);
-            cv.drawCircle(128, 32, 30, p);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(10);
+            p.setColor((color & 0x00FFFFFF) | 0x66000000);
+            cv.drawCircle(80, 80, 72, p);
+            p.setStrokeWidth(4);
             p.setColor(Color.WHITE);
-            p.setTextSize(n > 9 ? 28 : 34);
+            cv.drawCircle(80, 80, 66, p);
+            p.setStyle(Paint.Style.FILL);
+        }
+        cv.drawBitmap(src, null, new android.graphics.RectF(18, 18, 142, 142), null);
+        if (n > 0) {
+            p.setColor(0xFF0B1F2A);
+            cv.drawCircle(128, 32, 32, p);   // dark outline so the badge pops on any colour
+            p.setColor(0xFFFF3B30);
+            cv.drawCircle(128, 32, 27, p);
+            p.setColor(Color.WHITE);
+            p.setTextSize(n > 9 ? 26 : 32);
             p.setFakeBoldText(true);
             p.setTextAlign(Paint.Align.CENTER);
             cv.drawText(n > 99 ? "99+" : String.valueOf(n), 128, 32 - (p.descent() + p.ascent()) / 2, p);
