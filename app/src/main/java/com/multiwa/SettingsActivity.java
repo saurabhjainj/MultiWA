@@ -58,6 +58,17 @@ public class SettingsActivity extends Activity {
         row("🔌", "Connect all accounts", "One tap after a phone restart", () -> MainActivity.connectAll(this));
         row("⚡", "Quick replies", Extras.quick(this).size() + " saved replies", this::editQuick);
         row("🤖", "Auto-reply", "Automatic answer when busy or at night", this::pickAutoReply);
+        int sp = Extras.speed(this);
+        String[] spIcon = {"🔋", "⏱️", "⚡"};
+        String[] spText = {
+                "Most battery saving; alerts can be late after long sleep",
+                "Wakes every 5 min: good alerts, moderate battery",
+                "Instant alerts, high battery use" };
+        row(spIcon[sp], "Notification speed: " + Extras.SPEEDS[sp], spText[sp] + " (tap to change)", () -> {
+            prefs.edit().putInt("speed", (Extras.speed(this) + 1) % 3).commit();
+            toast("Applies to each account the next time you open it");
+            build();
+        });
         row("📱", "Mobile layout: " + (Extras.mobile(this) ? "ON" : "OFF"), "One chat per screen, bigger text", () -> {
             prefs.edit().putBoolean("mobile", !Extras.mobile(this)).commit(); build();
         });

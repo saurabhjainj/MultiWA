@@ -48,6 +48,30 @@ public abstract class WaActivity extends Activity {
     private static final int REQ_FILE = 1, REQ_PERM = 2;
 
     private WebView web;
+
+    /** WhatsApp page. Fast mode: always "on screen". Smart mode: briefly "on screen" during a wake-up. */
+    static class PageView extends WebView {
+        boolean force;
+        PageView(android.content.Context c) { super(c); }
+
+        @Override
+        protected void onWindowVisibilityChanged(int visibility) {
+            super.onWindowVisibilityChanged(Extras.fast(getContext()) || force ? View.VISIBLE : visibility);
+        }
+
+        void setForce(boolean f) {
+            force = f;
+            onWindowVisibilityChanged(getWindowVisibility());
+        }
+    }
+
+    /** Smart mode wake-up: let WhatsApp run normally for ~25 s (reconnect, fetch new messages), then rest. */
+    void pulse() {
+        if (visible || !(web instanceof PageView)) return;
+        PageView pv = (PageView) web;
+        pv.setForce(true);
+        web.postDelayed(() -> { if (web instanceof PageView) ((PageView) web).setForce(false); }, 25_000);
+    }
     private ValueCallback<Uri[]> fileCb;
     private PermissionRequest pendingPerm;
 
@@ -57,12 +81,7 @@ public abstract class WaActivity extends Activity {
         current = this;
         // Pretend the page is always on screen, so Android/Chrome does not slow down
         // WhatsApp Web's timers in background (that slowdown delays notifications).
-        web = new WebView(this) {
-            @Override
-            protected void onWindowVisibilityChanged(int visibility) {
-                super.onWindowVisibilityChanged(View.VISIBLE);
-            }
-        };
+        web = new PageView(this);
         // Status bar in the account's colour, so you always know which number is open.
         getWindow().setStatusBarColor(MainActivity.darker(MainActivity.color(this, mySlot())));
         // Top account bar (all accounts, one tap to switch) + WhatsApp below it.
@@ -328,7 +347,7 @@ public abstract class WaActivity extends Activity {
             + "try{var q=navigator.permissions.query.bind(navigator.permissions);"
             + "navigator.permissions.query=function(p){if(p&&p.name==='notifications')return Promise.resolve({state:'granted',onchange:null});return q(p)}}catch(e){}"
             // 2. Tell WhatsApp when the app is in background (so it sends alerts)
-            + "var bg=false;window.__mwaSetBg=function(b){bg=b;try{window.dispatchEvent(new Event(b?'blur':'focus'))}catch(e){}};"
+            + "var bg=false;window.__mwaSetBg=function(b){bg=b;window.__mwaIsBg=b;try{window.dispatchEvent(new Event(b?'blur':'focus'))}catch(e){}};"
             + "try{document.hasFocus=function(){return !bg}}catch(e){}"
             // 3. Backup: watch unread count in the title every 1.5 s
             + "var last=-1;setInterval(function(){var m=/^\\((\\d+)\\)/.exec(document.title||'');"
@@ -596,8 +615,12 @@ public abstract class WaActivity extends Activity {
                 .build();
         if (!"New message".equals(last[0])) {
             // Rebuild with an inline "↩ Reply" box for the last sender.
+            android.app.Notification.Action reply = Extras.replyAction(this, s, last[0]);
             n = android.app.Notification.Builder.recoverBuilder(this, n)
-                    .addAction(Extras.replyAction(this, s, last[0])).build();
+                    .addAction(reply)
+                    // Smartwatch: show Reply (with voice/keyboard/smart replies) as the watch action
+                    .extend(new android.app.Notification.WearableExtender().addAction(reply))
+                    .build();
         }
         getSystemService(android.app.NotificationManager.class).notify(10 + s, n);
     }
@@ -692,6 +715,7 @@ public abstract class WaActivity extends Activity {
         getWindow().setStatusBarColor(MainActivity.darker(c));
         if (switchBg != null) switchBg.setColor((c & 0x00FFFFFF) | 0xE6000000);
         placeBar();
+        try { startForegroundService(new Intent(this, KeepAlive.SERVICES[mySlot()])); } catch (Exception ignored) {}
         barHandler.post(barTick); // refresh account bar (names, colours, unread, size)
     }
 

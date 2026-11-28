@@ -74,6 +74,58 @@ public final class Extras {
     static boolean mobile(Context c) { return p(c).getBoolean("mobile", false); }
     static boolean dark(Context c) { return p(c).getBoolean("dark", false); }
 
+    /** Notification speed: 0 = Balanced, 1 = Smart (wake every 5 min, default), 2 = Fast. */
+    static final String[] SPEEDS = {"Balanced", "Smart", "Fast"};
+    static int speed(Context c) {
+        if (p(c).contains("speed")) return p(c).getInt("speed", 1);
+        return p(c).getBoolean("fast", false) ? 2 : 1;   // earlier on/off setting
+    }
+    static boolean fast(Context c) { return speed(c) == 2; }
+    static boolean smart(Context c) { return speed(c) == 1; }
+
+    static final long PULSE_MS = 5 * 60_000L;
+
+    /** Smart mode: wake this account every 5 minutes (Android may stretch it a little in deep sleep). */
+    static void schedulePulse(Context c, int slot) {
+        android.app.AlarmManager am = c.getSystemService(android.app.AlarmManager.class);
+        PendingIntent pi = PendingIntent.getBroadcast(c, 500 + slot, new Intent(c, PULSE[slot]),
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        if (!smart(c)) { am.cancel(pi); return; }
+        long at = System.currentTimeMillis() + PULSE_MS;
+        if (android.os.Build.VERSION.SDK_INT >= 31 && !am.canScheduleExactAlarms())
+            am.setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, at, pi);
+        else
+            am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, at, pi);
+    }
+
+    public static abstract class Pulse extends BroadcastReceiver {
+        @Override
+        public void onReceive(Context c, Intent intent) {
+            int slot = -1;
+            for (int i = 0; i < PULSE.length; i++) if (PULSE[i] == getClass()) slot = i;
+            if (slot < 0 || !smart(c)) return;
+            // Stay awake ~30 s so WhatsApp can reconnect and deliver waiting messages.
+            android.os.PowerManager pm = c.getSystemService(android.os.PowerManager.class);
+            android.os.PowerManager.WakeLock wl = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "multiwa:pulse" + slot);
+            wl.acquire(30_000);
+            WaActivity w = WaActivity.current;
+            if (w != null) w.runOnUiThread(w::pulse);
+            schedulePulse(c, slot);
+        }
+    }
+    public static class P1 extends Pulse {}
+    public static class P2 extends Pulse {}
+    public static class P3 extends Pulse {}
+    public static class P4 extends Pulse {}
+    public static class P5 extends Pulse {}
+    public static class P6 extends Pulse {}
+    public static class P7 extends Pulse {}
+    public static class P8 extends Pulse {}
+    public static class P9 extends Pulse {}
+    public static class P10 extends Pulse {}
+    static final Class<?>[] PULSE = { P1.class, P2.class, P3.class, P4.class, P5.class,
+            P6.class, P7.class, P8.class, P9.class, P10.class };
+
     /** Page size in mobile layout: 0 = Large (real phone width), 1 = Medium, 2 = Small. */
     static final String[] PAGE_SIZES = {"Large", "Medium", "Small"};
     private static final String[] PAGE_VW = {"device-width", "520", "640"};
@@ -188,7 +240,7 @@ public final class Extras {
             + "var r=el.getBoundingClientRect();if(!r.width||!r.height)return;var dx=0,dy=0;"
             + "if(r.right>W-6)dx=W-6-r.right;if(r.left+dx<6)dx=6-r.left;if(r.bottom>H-6)dy=H-6-r.bottom;if(r.top+dy<6)dy=6-r.top;"
             + "if(dx||dy){var s=el.__mwaS||[0,0];s=[s[0]+dx,s[1]+dy];el.__mwaS=s;el.style.translate=s[0]+'px '+s[1]+'px'}})}"
-            + "new MutationObserver(function(){if(!busy){busy=true;requestAnimationFrame(fix)}})"
+            + "new MutationObserver(function(){if(!busy&&!window.__mwaIsBg){busy=true;requestAnimationFrame(fix)}})"
             + ".observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['style']});"
             + "})();";
 
@@ -217,7 +269,7 @@ public final class Extras {
             + "if(p.children.length>=2&&pr.width>=innerWidth*0.9&&lr.width>0&&lr.width<=pr.width*0.75){"
             + "var right=[].some.call(p.children,function(k){if(k===l)return false;var r=k.getBoundingClientRect();return r.width>0&&r.left>=lr.right-2});"
             + "if(right){L=l;C=p;return true}}l=p}return false}"
-            + "setInterval(function(){try{"
+            + "setInterval(function(){if(window.__mwaIsBg)return;try{"
             + "var m=document.querySelector('meta[name=viewport]');if(!m&&document.head){m=document.createElement('meta');m.name='viewport';document.head.appendChild(m)}"
             + "var vw=window.__mwaVW||'device-width';var want=vw==='device-width'?'width=device-width, initial-scale=1':'width='+vw;"
             + "if(m&&m.content!==want)m.content=want;"
@@ -239,7 +291,7 @@ public final class Extras {
     private static final String DARK_JS =
             "(function(){try{if(!window.__mwaDark){if(localStorage.getItem('__mwaDark')==='1'){localStorage.setItem('theme','\"light\"');localStorage.removeItem('__mwaDark');document.body&&document.body.classList.remove('dark')}return}"
             + "localStorage.setItem('theme','\"dark\"');localStorage.setItem('__mwaDark','1')}catch(e){}"
-            + "setInterval(function(){if(document.body&&!document.body.classList.contains('dark'))document.body.classList.add('dark')},1000)})();";
+            + "setInterval(function(){if(window.__mwaIsBg)return;if(document.body&&!document.body.classList.contains('dark'))document.body.classList.add('dark')},1000)})();";
 
     // ---------- Reply from notification ----------
     public static abstract class ReplyReceiver extends BroadcastReceiver {
@@ -271,7 +323,9 @@ public final class Extras {
         PendingIntent pi = PendingIntent.getBroadcast(c, 300 + slot, i,
                 PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         RemoteInput ri = new RemoteInput.Builder("reply").setLabel("Reply to " + who).build();
-        return new Notification.Action.Builder(null, "↩ Reply", pi).addRemoteInput(ri).build();
+        return new Notification.Action.Builder(null, "↩ Reply", pi).addRemoteInput(ri)
+                .setAllowGeneratedReplies(true)   // watch offers smart quick replies
+                .build();
     }
 
     static void simple(Context c, int slot, String title, String text) {

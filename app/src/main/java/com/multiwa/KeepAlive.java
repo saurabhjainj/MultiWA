@@ -40,22 +40,28 @@ public abstract class KeepAlive extends Service {
                 .setColor(MainActivity.color(this, s))
                 .setGroup("bg")
                 .setOngoing(true)
+                .setLocalOnly(true) // phone only: don't send "online" lines to the watch
                 .build();
         startForeground(100 + s, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
-        // Keep Wi-Fi awake with screen off so the WhatsApp connection is not dropped.
-        if (wifiLock == null) {
-            android.net.wifi.WifiManager wm = getApplicationContext().getSystemService(android.net.wifi.WifiManager.class);
-            wifiLock = wm.createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF, "multiwa:" + s);
-            wifiLock.setReferenceCounted(false);
-            wifiLock.acquire();
+        // Wake locks only in "Fast" mode: they keep notifications instant but drain the battery.
+        if (Extras.fast(this)) {
+            if (wifiLock == null) {
+                android.net.wifi.WifiManager wm = getApplicationContext().getSystemService(android.net.wifi.WifiManager.class);
+                wifiLock = wm.createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF, "multiwa:" + s);
+                wifiLock.setReferenceCounted(false);
+            }
+            if (!wifiLock.isHeld()) wifiLock.acquire();
+            if (cpuLock == null) {
+                android.os.PowerManager pm = getSystemService(android.os.PowerManager.class);
+                cpuLock = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "multiwa:cpu" + s);
+                cpuLock.setReferenceCounted(false);
+            }
+            if (!cpuLock.isHeld()) cpuLock.acquire();
+        } else {
+            if (wifiLock != null && wifiLock.isHeld()) wifiLock.release();
+            if (cpuLock != null && cpuLock.isHeld()) cpuLock.release();
         }
-        // Keep CPU awake with screen off so WhatsApp Web handles new messages instantly.
-        if (cpuLock == null) {
-            android.os.PowerManager pm = getSystemService(android.os.PowerManager.class);
-            cpuLock = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "multiwa:cpu" + s);
-            cpuLock.setReferenceCounted(false);
-            cpuLock.acquire();
-        }
+        Extras.schedulePulse(this, s); // Smart mode: wake-ups every 5 min (cancelled in other modes)
         return START_NOT_STICKY;
     }
 

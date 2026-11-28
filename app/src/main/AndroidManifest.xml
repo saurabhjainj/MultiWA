@@ -151,6 +151,18 @@
         <receiver android:name=".Extras$Q9" android:process=":wa9" android:exported="false" />
         <receiver android:name=".Extras$Q10" android:process=":wa10" android:exported="false" />
 
+        <!-- Smart mode: 5-minute wake-ups, delivered into each account's process -->
+        <receiver android:name=".Extras$P1" android:process=":wa1" android:exported="false" />
+        <receiver android:name=".Extras$P2" android:process=":wa2" android:exported="false" />
+        <receiver android:name=".Extras$P3" android:process=":wa3" android:exported="false" />
+        <receiver android:name=".Extras$P4" android:process=":wa4" android:exported="false" />
+        <receiver android:name=".Extras$P5" android:process=":wa5" android:exported="false" />
+        <receiver android:name=".Extras$P6" android:process=":wa6" android:exported="false" />
+        <receiver android:name=".Extras$P7" android:process=":wa7" android:exported="false" />
+        <receiver android:name=".Extras$P8" android:process=":wa8" android:exported="false" />
+        <receiver android:name=".Extras$P9" android:process=":wa9" android:exported="false" />
+        <receiver android:name=".Extras$P10" android:process=":wa10" android:exported="false" />
+
         <!-- Phone restart: re-arm schedules + "connect all" notification -->
         <receiver android:name=".Extras$Boot" android:exported="true">
             <intent-filter>
